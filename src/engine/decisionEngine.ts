@@ -1,6 +1,7 @@
-import type { RiskResult, DecisionResult, MerchantSettings, DecisionAction } from '../types/risk';
+import type { RiskResult, DecisionResult, MerchantSettings, DecisionAction, CanonicalDecision } from '../types/risk';
 import type { PaymentMethod } from '../types/order';
-import { getPaymentPolicy, type PaymentPolicy, type RiskLevel } from './paymentPolicy';
+import { getPaymentPolicy, type PaymentPolicy } from './paymentPolicy';
+import { CANONICAL_POLICY_CONFIG, RISK_THRESHOLDS, type RiskLevel } from './riskPolicy';
 
 /**
  * Policy & Decision Engine — STRICTLY SEPARATE from ML Risk Engine.
@@ -22,22 +23,25 @@ import { getPaymentPolicy, type PaymentPolicy, type RiskLevel } from './paymentP
  *
  * 3-Tier Policy Rules:
  *   LOW    (0–30%):  ALLOW_ALL     (COD Available, ₹0 COD fee, Frictionless)
- *   MEDIUM (30–70%): SOFT_NUDGE    (COD Available with ₹50 fee, UPI/Card ₹0 fee)
- *   HIGH   (70–100%): PREPAID_ONLY (COD Disabled, UPI/Card only)
+ *   MEDIUM (31–70%): SOFT_NUDGE    (COD Available with ₹50 fee, UPI/Card ₹0 fee)
+ *   HIGH   (71–100%): PREPAID_ONLY (COD Disabled, UPI/Card only)
  */
 export function makeDecision(
   riskResult: RiskResult,
   settings: MerchantSettings
 ): DecisionResult {
-  const policyVersion = `PAYMENT_POLICY_V2`;
+  const policyVersion = CANONICAL_POLICY_CONFIG.version;
   const score = riskResult.score;
 
   let riskLevel: RiskLevel;
 
+  const highThresh = settings.highThreshold ?? RISK_THRESHOLDS.MEDIUM_MAX;
+  const medThresh = settings.mediumThreshold ?? RISK_THRESHOLDS.LOW_MAX;
+
   // Derive risk tier classification
-  if (score >= settings.highThreshold || (riskResult.ringRisk?.ringDetected && riskResult.ringRisk.ringRiskScore >= 75)) {
+  if (score >= highThresh || (riskResult.ringRisk?.ringDetected && riskResult.ringRisk.ringRiskScore >= CANONICAL_POLICY_CONFIG.sentinel.abuseRingCriticalThreshold)) {
     riskLevel = 'HIGH';
-  } else if (score >= settings.mediumThreshold) {
+  } else if (score >= medThresh) {
     riskLevel = 'MEDIUM';
   } else {
     riskLevel = 'LOW';
@@ -76,14 +80,46 @@ export function makeDecision(
     ? ['UPI', 'CARD', 'COD']
     : ['UPI', 'CARD'];
 
+  const otpRequired = riskLevel === 'MEDIUM' ? Boolean(settings.otpRequired) : false;
+
+  const canonicalDecision: CanonicalDecision = {
+    riskScore: score,
+    rtoProbability: riskResult.rtoProbability,
+    riskBand: riskLevel,
+    signalBreakdown: riskResult.contributions,
+    abuseRisk: {
+      ringDetected: Boolean(riskResult.ringRisk?.ringDetected),
+      ringRiskScore: riskResult.ringRisk?.ringRiskScore ?? 0,
+      clusterSize: riskResult.ringRisk?.clusterSize ?? 1,
+    },
+    aiSignal: {
+      available: Boolean(riskResult.aiAvailable),
+      riskScore: Math.min(100, (riskResult.contributions?.ai ?? 0) * 20),
+      confidence: riskResult.confidence,
+    },
+    predictionSource: riskResult.mlAvailable ? 'artifact' : 'deterministic_fallback',
+    modelVersion: riskResult.mlModelVersion || 'RTO Shield GBDT v1',
+    featureSchemaVersion: 'rto-features-v1',
+    policyVersion,
+    recommendedIntervention: {
+      action,
+      allowedPaymentMethods: paymentMethods,
+      codFee: paymentPolicy.codFee,
+      otpRequired,
+      customerMessage: nudgeMessages.join(' '),
+    },
+    timestamp: Date.now(),
+  };
+
   return {
     action,
     paymentMethods,
     paymentPolicy,
-    otpRequired: riskLevel === 'MEDIUM' ? settings.otpRequired : false,
+    otpRequired,
     codFee: paymentPolicy.codFee,
     upiDiscount: settings.upiDiscount || 0,
     nudgeMessages,
     policyVersion,
+    canonicalDecision,
   };
 }

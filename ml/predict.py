@@ -14,6 +14,14 @@ from explain import explain_prediction
 from model_manifest import DATASET_NAME, MANIFEST_NAME, MODEL_VERSION, sha256_file
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
+_CACHED_ARTIFACT_HASH = None
+
+
+def get_artifact_hash(path: str) -> str:
+    global _CACHED_ARTIFACT_HASH
+    if _CACHED_ARTIFACT_HASH is None:
+        _CACHED_ARTIFACT_HASH = sha256_file(path)
+    return _CACHED_ARTIFACT_HASH
 
 
 def load_manifest_dataset_version():
@@ -47,6 +55,27 @@ def predict_single(order_payload, require_artifact=False, model=None):
     artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
     if require_artifact and not os.path.exists(artifact_path):
         raise FileNotFoundError("rto_model.joblib is required for authoritative evaluation")
+
+    intent_score = features[21]
+    device_links = int(features[22])
+    prev_orders = features[0]
+    rto_rate = features[4]
+
+    ring_detected = device_links >= 3 or (prev_orders > 0 and rto_rate > 0.5 and device_links >= 2)
+    ring_score = min(95, int(device_links * 18 + rto_rate * 40)) if ring_detected else int(device_links * 8)
+    signals = []
+    if device_links >= 3:
+        signals.append(f"{device_links} accounts share device fingerprint")
+    if ring_detected and rto_rate > 0.4:
+        signals.append(f"Cluster return rate is elevated ({rto_rate:.0%})")
+
+    ring_risk_dict = {
+        "ringRiskScore": ring_score,
+        "ringDetected": ring_detected,
+        "clusterSize": device_links,
+        "signals": signals if signals else ["No abuse cluster anomalies detected"],
+    }
+
     if os.path.exists(artifact_path):
         try:
             import joblib
@@ -58,15 +87,20 @@ def predict_single(order_payload, require_artifact=False, model=None):
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
             risk_score = max(0, min(100, int(round(probability * 100))))
             risk_level, action = classify_risk_tier(risk_score)
+            reasons = explain_prediction(order_payload, probability, risk_score)
             return {
                 "rtoProbability": round(probability, 4),
                 "riskScore": risk_score,
                 "riskLevel": risk_level,
+                "riskBand": "LOW" if risk_score <= 30 else ("MEDIUM" if risk_score <= 70 else "HIGH"),
+                "intentScore": round(intent_score, 1),
                 "recommendedAction": action,
+                "reasons": reasons,
+                "ringRisk": ring_risk_dict,
                 "modelVersion": MODEL_VERSION,
                 "modelSource": "artifact",
                 "featureSchemaVersion": FEATURE_SCHEMA_VERSION,
-                "artifactHash": sha256_file(artifact_path),
+                "artifactHash": get_artifact_hash(artifact_path),
                 "evaluationDataset": DATASET_NAME,
                 "evaluationDatasetVersion": load_manifest_dataset_version(),
                 "evaluationManifest": MANIFEST_NAME,
@@ -78,11 +112,8 @@ def predict_single(order_payload, require_artifact=False, model=None):
     else:
         artifact_error = "rto_model.joblib not found"
 
-    # Feature mapping
-    prev_orders = features[0]
+    # Fallback logit calculation
     prev_del = features[1]
-    prev_rto = features[2]
-    rto_rate = features[4]
     order_val = features[7]
     cod_selected = features[10]
     pincode_rate = features[11]
@@ -91,10 +122,7 @@ def predict_single(order_payload, require_artifact=False, model=None):
     city_match = features[14]
     chk_attempts = features[15]
     chk_dur = features[16]
-    intent_score = features[21]
-    device_links = features[22]
 
-    # Calculate probabilistic model score
     logit = -2.20
 
     if cod_selected == 1:
@@ -136,28 +164,15 @@ def predict_single(order_payload, require_artifact=False, model=None):
     risk_level, action = classify_risk_tier(risk_score)
     reasons = explain_prediction(order_payload, prob, risk_score)
 
-    ring_detected = device_links >= 3 or (prev_orders > 0 and rto_rate > 0.5 and device_links >= 2)
-    ring_score = min(95, int(device_links * 18 + rto_rate * 40)) if ring_detected else int(device_links * 8)
-
-    signals = []
-    if device_links >= 3:
-        signals.append(f"{device_links} accounts share device fingerprint")
-    if ring_detected and rto_rate > 0.4:
-        signals.append(f"Cluster return rate is elevated ({rto_rate:.0%})")
-
     return {
         "rtoProbability": round(prob, 4),
         "riskScore": risk_score,
         "riskLevel": risk_level,
+        "riskBand": "LOW" if risk_score <= 30 else ("MEDIUM" if risk_score <= 70 else "HIGH"),
         "intentScore": round(intent_score, 1),
         "recommendedAction": action,
         "reasons": reasons,
-        "ringRisk": {
-            "ringRiskScore": ring_score,
-            "ringDetected": ring_detected,
-            "clusterSize": device_links,
-            "signals": signals,
-        },
+        "ringRisk": ring_risk_dict,
         "modelVersion": "RTO Shield Deterministic Fallback v1",
         "modelSource": "deterministic_fallback",
         "featureSchemaVersion": FEATURE_SCHEMA_VERSION,
@@ -168,11 +183,84 @@ def predict_single(order_payload, require_artifact=False, model=None):
     }
 
 
+def predict_batch(payload_list, require_artifact=False, model=None):
+    """
+    Performs vectorized batch prediction over an array of transaction payloads.
+    Loads artifact once and evaluates all instances in a single predict_proba pass.
+    """
+    if not isinstance(payload_list, list):
+        raise ValueError("Batch payload must be a list of objects")
+    if not payload_list:
+        return []
+
+    artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
+    if require_artifact and not os.path.exists(artifact_path):
+        raise FileNotFoundError("rto_model.joblib is required for authoritative batch evaluation")
+
+    features_matrix = [extract_features_from_dict(p) for p in payload_list]
+
+    if os.path.exists(artifact_path):
+        try:
+            import joblib
+            start = time.perf_counter()
+            loaded_model = model or joblib.load(artifact_path)
+            probs = loaded_model.predict_proba(features_matrix)[:, 1]
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+
+            results = []
+            for i, p in enumerate(payload_list):
+                prob = float(probs[i])
+                risk_score = max(0, min(100, int(round(prob * 100))))
+                risk_level, action = classify_risk_tier(risk_score)
+                reasons = explain_prediction(p, prob, risk_score)
+                feats = features_matrix[i]
+                dev_links = int(feats[22])
+                p_orders = feats[0]
+                r_rate = feats[4]
+                r_det = dev_links >= 3 or (p_orders > 0 and r_rate > 0.5 and dev_links >= 2)
+                r_score = min(95, int(dev_links * 18 + r_rate * 40)) if r_det else int(dev_links * 8)
+
+                results.append({
+                    "rtoProbability": round(prob, 4),
+                    "riskScore": risk_score,
+                    "riskLevel": risk_level,
+                    "riskBand": "LOW" if risk_score <= 30 else ("MEDIUM" if risk_score <= 70 else "HIGH"),
+                    "intentScore": round(feats[21], 1),
+                    "recommendedAction": action,
+                    "reasons": reasons,
+                    "ringRisk": {
+                        "ringRiskScore": r_score,
+                        "ringDetected": r_det,
+                        "clusterSize": dev_links,
+                        "signals": [f"{dev_links} accounts share device fingerprint"] if dev_links >= 3 else ["No abuse cluster anomalies detected"],
+                    },
+                    "modelVersion": MODEL_VERSION,
+                    "modelSource": "artifact",
+                    "featureSchemaVersion": FEATURE_SCHEMA_VERSION,
+                    "artifactHash": get_artifact_hash(artifact_path),
+                    "inferenceLatencyMs": round(elapsed_ms / len(payload_list), 2),
+                    "probabilityLabel": "Predicted RTO Probability",
+                })
+            return results
+        except Exception as exc:
+            raise RuntimeError(f"Model artifact is present but unusable in batch: {exc}") from exc
+
+    # Fallback: predict each individually
+    return [predict_single(p) for p in payload_list]
+
+
 def main():
-    # If run with JSON input via stdin or arg
     if len(sys.argv) > 1:
-        payload = json.loads(sys.argv[1])
+        if sys.argv[1] == "--batch":
+            raw_input = sys.stdin.read() if (len(sys.argv) <= 2 or sys.argv[2] == "-") else sys.argv[2]
+            payload_list = json.loads(raw_input)
+            res = predict_batch(payload_list)
+            print(json.dumps(res))
+            return
+        raw_input = sys.stdin.read() if sys.argv[1] == "-" else sys.argv[1]
+        payload = json.loads(raw_input)
     else:
+
         # Default test payload (Serial Returner sample)
         payload = {
             "previous_orders": 12,
@@ -193,3 +281,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -106,11 +106,18 @@ export interface CounterfactualToggleState {
 export interface CounterfactualResult {
   currentRiskScore: number;
   currentRiskTier: RiskTier;
+  currentRtoProbability?: number;
   projectedRiskScore: number;
   projectedRiskTier: RiskTier;
+  projectedRtoProbability?: number;
   pointsReduction: number;
+  direction?: 'DECREASE' | 'INCREASE' | 'NEUTRAL';
   toggles: CounterfactualToggleState;
   detailedDeltas: Array<{ factor: string; deltaPoints: number; active: boolean }>;
+  modelSource?: 'artifact' | 'deterministic_fallback';
+  modelVersion?: string;
+  featureSchemaVersion?: string;
+  artifactHash?: string;
 }
 
 export interface PolicySimulationInputs {

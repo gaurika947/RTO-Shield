@@ -115,6 +115,36 @@ export interface CachedAnalysis {
   aiExplanation?: string;
 }
 
+// --- Canonical Structured Decision Contract (Phase 2) ---
+export interface CanonicalDecision {
+  riskScore: number;
+  rtoProbability: number;
+  riskBand: 'LOW' | 'MEDIUM' | 'HIGH';
+  signalBreakdown: SignalContributions;
+  abuseRisk: {
+    ringDetected: boolean;
+    ringRiskScore: number;
+    clusterSize: number;
+  };
+  aiSignal: {
+    available: boolean;
+    riskScore: number;
+    confidence: number;
+  };
+  predictionSource: 'artifact' | 'deterministic_fallback';
+  modelVersion: string;
+  featureSchemaVersion: string;
+  policyVersion: string;
+  recommendedIntervention: {
+    action: DecisionAction;
+    allowedPaymentMethods: PaymentMethod[];
+    codFee: number;
+    otpRequired: boolean;
+    customerMessage: string;
+  };
+  timestamp: number;
+}
+
 // --- Decision Result (from Decision Engine) ---
 export interface DecisionResult {
   action: DecisionAction;
@@ -126,6 +156,7 @@ export interface DecisionResult {
   nudgeMessages: string[];
   policyVersion: string;
   interventionLevel?: string;
+  canonicalDecision?: CanonicalDecision;
 }
 
 // --- Audit Record ---

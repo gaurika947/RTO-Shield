@@ -9,6 +9,7 @@ import type {
   AbuseRingResult,
 } from '../types/common';
 import type { MerchantSettings } from '../types/risk';
+import { RISK_THRESHOLDS } from './riskPolicy';
 
 /**
  * AI Intervention Optimizer Engine
@@ -33,9 +34,9 @@ export function optimizeIntervention(
   const isModerateTrust = customerTrust.trustScore >= 60;
   const isAbuseRing = ringRisk.ringDetected && ringRisk.ringRiskScore >= 75;
 
-  // Threshold adjustments based on merchant strategy
-  let medThresh = settings.mediumThreshold || 40;
-  let highThresh = settings.highThreshold || 75;
+  // Canonical threshold adjustments based on merchant strategy
+  let medThresh = settings.mediumThreshold ?? RISK_THRESHOLDS.LOW_MAX;
+  let highThresh = settings.highThreshold ?? RISK_THRESHOLDS.MEDIUM_MAX;
 
   if (strategy === 'conversion_first') {
     medThresh += 10;

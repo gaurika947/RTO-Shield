@@ -13,6 +13,7 @@ import { analyzeBehavior } from './behaviorAnalyzer';
 import { analyzeAbuseRing } from './abuseRingSentinel';
 import { computeCustomerTrustPassport } from './trustEngine';
 import { optimizeIntervention } from './interventionEngine';
+import { RISK_THRESHOLDS, resolveConflictingSignals } from './riskPolicy';
 
 const RISK_ENGINE_VERSION = 'RISK_ENGINE_V3';
 
@@ -86,8 +87,6 @@ export function evaluateRisk(
     computedScore = Math.max(computedScore, ringResult.ringRiskScore * 0.85 + computedScore * 0.15);
   }
 
-  const finalScore = Math.round(Math.min(100, Math.max(0, computedScore)));
-
   // --- CONTRIBUTIONS (transparent signal attribution) ---
   const contributions: SignalContributions = {
     address: Math.round(addressResult.risk * (weights.address ?? 0.12)),
@@ -99,18 +98,22 @@ export function evaluateRisk(
     ai: Math.round((aiAvailable ? aiScore : 25) * aiWeight),
   };
 
-  // --- 3-TIER RISK CLASSIFICATION ---
-  let tier: RiskTier;
-  const highThresh = settings.highThreshold ?? 70;
-  const medThresh = settings.mediumThreshold ?? 30;
+  // --- DETERMINISTIC CONFLICT RESOLUTION (Phase 2 Step 8) ---
+  const highThresh = settings.highThreshold ?? RISK_THRESHOLDS.MEDIUM_MAX;
 
-  if (finalScore >= highThresh) {
-    tier = 'HIGH';
-  } else if (finalScore >= medThresh) {
-    tier = 'MEDIUM';
-  } else {
-    tier = 'LOW';
-  }
+  const resolved = resolveConflictingSignals({
+    rawCalculatedScore: computedScore,
+    mlProbability: mlRtoProbability,
+    mlAvailable,
+    deterministicHigh: computedScore >= highThresh,
+    abuseRingDetected: ringResult.ringDetected,
+    abuseRingScore: ringResult.ringRiskScore,
+    aiRiskScore: aiAvailable ? aiScore : undefined,
+    aiAvailable,
+  });
+
+  const finalScore = resolved.resolvedScore;
+  const tier: RiskTier = resolved.resolvedTier;
 
   // --- CONFIDENCE (evidence quality) ---
   const confidenceFactors: number[] = [
@@ -153,6 +156,9 @@ export function evaluateRisk(
   }
   if (!aiAvailable) {
     allSignals.push('AI analysis unavailable — confidence reduced');
+  }
+  if (resolved.conflictNotes.length > 0) {
+    allSignals.push(...resolved.conflictNotes);
   }
 
   const allEvidence: Evidence[] = [];

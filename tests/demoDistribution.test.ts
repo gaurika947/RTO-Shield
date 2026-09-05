@@ -65,6 +65,8 @@ describe('Demo Transactions Distribution Test', () => {
           intentScore: mlOutput.intentScore,
           reasons: mlOutput.reasons,
           source: 'client',
+          modelSource: 'deterministic_fallback',
+          featureSchemaVersion: 'rto-features-v1',
         }
       );
 

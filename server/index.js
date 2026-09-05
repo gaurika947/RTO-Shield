@@ -46,93 +46,94 @@ const PINCODE_RISK_MAP = {
 };
 
 // ----------------------------------------------------
+// Canonical 28-Feature Payload Builder
+// ----------------------------------------------------
+function buildCanonicalPayload(raw = {}) {
+  const customer = raw.customer || {};
+  const order = raw.order || {};
+  const behavior = raw.behavior || {};
+  const address = raw.address || {};
+
+  const addressLine = String(address.line1 || '');
+  const derivedAddressCompleteness = Math.min(
+    1,
+    0.5 +
+      (addressLine.length > 20 ? 0.25 : 0) +
+      (address.landmark ? 0.15 : 0) +
+      (address.pincode && address.city ? 0.1 : 0)
+  );
+
+  return {
+    previous_orders: Number(customer.previous_orders ?? customer.totalOrders ?? 0),
+    previous_delivered_orders: Number(customer.previous_delivered_orders ?? customer.successfulDeliveries ?? 0),
+    previous_rto_orders: Number(customer.previous_rto_orders ?? customer.rtoOrders ?? 0),
+    previous_cancelled_orders: Number(customer.previous_cancelled_orders ?? 0),
+    order_value: Number(order.order_value ?? order.amount ?? 1999),
+    payment_method: String(order.payment_method ?? order.paymentMethod ?? 'COD'),
+    pincode_rto_rate: Number(address.pincode_rto_rate || PINCODE_RISK_MAP[String(address.pincode || '')] || 0.18),
+    address_completeness: Number(address.address_completeness || derivedAddressCompleteness),
+    address_changes: Number(behavior.address_changes || 0),
+    city_state_match: Number(address.city_state_match ?? 1),
+    checkout_attempts: Number(behavior.checkout_attempts || 1),
+    checkout_duration: Number(behavior.checkout_duration || 60),
+    cart_revisions: Number(behavior.cart_revisions || 0),
+    quantity_changes: Number(behavior.quantity_changes || 0),
+    payment_attempts: Number(behavior.payment_attempts || 1),
+    session_duration: Number(behavior.session_duration || 180),
+    intent_score: Number(behavior.intent_score || 50),
+    device_linked_accounts: Number(customer.device_linked_accounts ?? (customer.knownDevices ? customer.knownDevices.length : 1)),
+    product_category: String(order.product_category || 'ELECTRONICS'),
+  };
+}
+
+function createMutatedPayload(baseRaw, toggleState = {}) {
+  const mutated = JSON.parse(JSON.stringify(baseRaw || {}));
+  mutated.customer = mutated.customer || {};
+  mutated.order = mutated.order || {};
+  mutated.address = mutated.address || {};
+  mutated.behavior = mutated.behavior || {};
+
+  if (toggleState.prepaidPayment) {
+    mutated.order.payment_method = 'UPI';
+    mutated.order.cod_selected = 0;
+  }
+  if (toggleState.verifiedAddress) {
+    if (!mutated.address.landmark) mutated.address.landmark = 'Verified Landmark Nearby';
+    if (!mutated.address.line1 || mutated.address.line1.length < 25) {
+      mutated.address.line1 = `${mutated.address.line1 || 'Main Road'}, Sector 14, Commercial Belt`;
+    }
+    mutated.behavior.address_changes = 0;
+    mutated.address.address_completeness = 1.0;
+  }
+  if (toggleState.removeSuspiciousNetwork) {
+    mutated.customer.device_linked_accounts = 1;
+    if (mutated.customer.knownDevices) {
+      mutated.customer.knownDevices = [mutated.customer.knownDevices[0] || 'DEV_1'];
+    }
+  }
+  if (toggleState.phoneVerification) {
+    mutated.behavior.checkout_duration = Math.max(95, Number(mutated.behavior.checkout_duration || 60) + 35);
+    mutated.behavior.checkout_attempts = 1;
+    mutated.behavior.intent_score = Math.min(100, Math.max(50, Number(mutated.behavior.intent_score || 50) + 15));
+  }
+  return buildCanonicalPayload(mutated);
+}
+
+// ----------------------------------------------------
 // 1a. CLEAN ML PREDICTION API (POST /api/ml/rto-predict)
 // Returns: predicted RTO probability, model source, model version, latency
 // ----------------------------------------------------
 app.post('/api/ml/rto-predict', async (req, res) => {
   try {
-    const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
-    if (!req.body || typeof req.body !== 'object' || !Number.isFinite(Number(order.order_value)) || Number(order.order_value) < 0) {
+    const order = req.body.order || {};
+    const orderVal = Number(order.order_value ?? order.amount ?? 0);
+    if (!req.body || typeof req.body !== 'object' || !Number.isFinite(orderVal) || orderVal < 0) {
       return res.status(400).json({ error: 'Invalid transaction payload: order.order_value must be a non-negative number.' });
     }
-    const addressLine = String(address.line1 || '');
-    const derivedAddressCompleteness = Math.min(1, 0.5 + (addressLine.length > 20 ? 0.25 : 0) + (address.landmark ? 0.15 : 0) + (address.pincode && address.city ? 0.1 : 0));
-    const payload = {
-      previous_orders: Number(customer.previous_orders || 0),
-      previous_delivered_orders: Number(customer.previous_delivered_orders || 0),
-      previous_rto_orders: Number(customer.previous_rto_orders || 0),
-      previous_cancelled_orders: Number(customer.previous_cancelled_orders || 0),
-      order_value: Number(order.order_value || 0),
-      payment_method: String(order.payment_method || 'COD'),
-      pincode_rto_rate: Number(address.pincode_rto_rate || PINCODE_RISK_MAP[String(address.pincode || '')] || 0.18),
-      address_completeness: Number(address.address_completeness || derivedAddressCompleteness),
-      address_changes: Number(behavior.address_changes || 0),
-      checkout_attempts: Number(behavior.checkout_attempts || 1),
-      checkout_duration: Number(behavior.checkout_duration || 60),
-      device_linked_accounts: Number(customer.device_linked_accounts || 1),
-      intent_score: Number(behavior.intent_score || 50),
-    };
+    const payload = buildCanonicalPayload(req.body);
     const { stdout } = await execFileAsync(PYTHON_EXECUTABLE, [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)], { timeout: 5000 });
     const prediction = JSON.parse(stdout);
     return res.json(prediction);
-    /* Legacy inline scoring path intentionally disabled. */
-    /*
-
-    const prevOrders = Number(customer.previous_orders || customer.totalOrders || 0);
-    const prevDelivered = Number(customer.previous_delivered_orders || customer.successfulDeliveries || 0);
-    const prevRto = Number(customer.previous_rto_orders || customer.rtoOrders || 0);
-    const rtoRate = prevOrders > 0 ? prevRto / prevOrders : 0.0;
-    const orderAmount = Number(order.order_value || order.amount || 2499);
-    const paymentMethod = String(order.payment_method || order.paymentMethod || 'COD').toUpperCase();
-    const codSelected = paymentMethod === 'COD';
-    const pincode = String(address.pincode || '110001');
-    const pincodeRisk = PINCODE_RISK_MAP[pincode] || 0.18;
-
-    let addrComp = 0.50;
-    if (address.line1 && address.line1.length > 20) addrComp += 0.25;
-    if (address.landmark) addrComp += 0.15;
-    if (address.pincode && address.city) addrComp += 0.10;
-    addrComp = Math.min(1.0, addrComp);
-
-    const duration = Number(behavior.checkout_duration || 75);
-    const attempts = Number(behavior.checkout_attempts || 1);
-    const addressChanges = Number(behavior.address_changes || 0);
-    const deviceLinks = Number(customer.device_linked_accounts || 1);
-
-    const intentScore = calculateIntentScore(prevDelivered, prevRto, rtoRate, addrComp, duration, attempts, pincodeRisk);
-
-    let logit = -2.20;
-    if (codSelected) {
-      logit += 1.35;
-      if (orderAmount > 3000) logit += 0.45;
-    } else {
-      logit -= 1.60;
-    }
-    if (prevOrders === 0) {
-      logit += 0.20;
-    } else {
-      logit += (rtoRate - 0.20) * 3.5;
-      if (prevDelivered >= 8) logit -= 0.60;
-    }
-    logit += (pincodeRisk - 0.15) * 2.8;
-    logit += (1.0 - addrComp) * 0.90;
-    if (addressChanges >= 2) logit += 0.35;
-    logit -= ((intentScore - 50.0) / 50.0) * 0.95;
-    if (attempts >= 3) logit += 0.35;
-    if (duration < 25) logit += 0.30;
-    if (deviceLinks >= 4) logit += 1.40;
-    else if (deviceLinks >= 2) logit += 0.40;
-
-    const prob = 1.0 / (1.0 + Math.exp(-logit));
-
-    return res.json({
-      rtoProbability: Math.round(prob * 1000) / 1000,
-      predictedClass: prob >= 0.5 ? 1 : 0,
-      modelVersion: 'RTO Shield GBDT v1',
-      confidence: Math.round((1 - Math.abs(prob - 0.5) * 0.5 + 0.5) * 100) / 100,
-      riskScore: Math.max(0, Math.min(100, Math.round(prob * 100))),
-      intentScore: Math.round(intentScore * 10) / 10,
-    }); */
   } catch (err) {
     console.error('ML prediction error:', err);
     return res.status(500).json({ error: 'ML inference failure' });
@@ -140,29 +141,116 @@ app.post('/api/ml/rto-predict', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 1b. Compatibility ML PREDICTION API (POST /api/risk/predict)
+// 1b. AUTHORITATIVE BATCH PREDICTION API (POST /api/ml/batch-predict)
+// ----------------------------------------------------
+app.post('/api/ml/batch-predict', async (req, res) => {
+  try {
+    const { items = [] } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: 'Payload must contain items array' });
+    }
+    const canonicalList = items.map(buildCanonicalPayload);
+    const { stdout } = await execFileAsync(
+      PYTHON_EXECUTABLE,
+      [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(canonicalList)],
+      { timeout: 8000 }
+    );
+    const predictions = JSON.parse(stdout);
+    return res.json({ items: predictions, count: predictions.length });
+  } catch (err) {
+    console.error('Batch ML prediction error:', err);
+    return res.status(500).json({ error: 'Batch ML inference failure' });
+  }
+});
+
+// ----------------------------------------------------
+// 1c. AUTHORITATIVE COUNTERFACTUAL SIMULATION API (POST /api/ml/counterfactual)
+// Evaluates baseline + composite + individual toggle mutations against authoritative model artifact
+// ----------------------------------------------------
+app.post('/api/ml/counterfactual', async (req, res) => {
+  try {
+    const { toggles = {} } = req.body;
+    const basePayload = buildCanonicalPayload(req.body);
+    const projPayload = createMutatedPayload(req.body, toggles);
+    const phonePayload = createMutatedPayload(req.body, { phoneVerification: true });
+    const prepaidPayload = createMutatedPayload(req.body, { prepaidPayment: true });
+    const addrPayload = createMutatedPayload(req.body, { verifiedAddress: true });
+    const netPayload = createMutatedPayload(req.body, { removeSuspiciousNetwork: true });
+
+    const batchList = [basePayload, projPayload, phonePayload, prepaidPayload, addrPayload, netPayload];
+    const { stdout } = await execFileAsync(
+      PYTHON_EXECUTABLE,
+      [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(batchList)],
+      { timeout: 8000 }
+    );
+    const [basePred, projPred, phonePred, prepaidPred, addrPred, netPred] = JSON.parse(stdout);
+
+    const detailedDeltas = [
+      {
+        factor: 'Phone OTP Verification',
+        key: 'phoneVerification',
+        deltaPoints: Math.max(0, basePred.riskScore - phonePred.riskScore),
+        active: Boolean(toggles.phoneVerification),
+      },
+      {
+        factor: 'Switch to Prepaid (UPI/Card)',
+        key: 'prepaidPayment',
+        deltaPoints: Math.max(0, basePred.riskScore - prepaidPred.riskScore),
+        active: Boolean(toggles.prepaidPayment),
+      },
+      {
+        factor: 'Complete Landmark & Verified Address',
+        key: 'verifiedAddress',
+        deltaPoints: Math.max(0, basePred.riskScore - addrPred.riskScore),
+        active: Boolean(toggles.verifiedAddress),
+      },
+      {
+        factor: 'Disassociate Multi-Account Cluster',
+        key: 'removeSuspiciousNetwork',
+        deltaPoints: Math.max(0, basePred.riskScore - netPred.riskScore),
+        active: Boolean(toggles.removeSuspiciousNetwork),
+      },
+    ];
+
+    const pointsReduction = Math.max(0, basePred.riskScore - projPred.riskScore);
+    const direction =
+      projPred.riskScore < basePred.riskScore
+        ? 'DECREASE'
+        : projPred.riskScore > basePred.riskScore
+        ? 'INCREASE'
+        : 'NEUTRAL';
+
+    return res.json({
+      currentRiskScore: basePred.riskScore,
+      currentRiskTier: basePred.riskBand || basePred.riskLevel,
+      currentRtoProbability: basePred.rtoProbability,
+      projectedRiskScore: projPred.riskScore,
+      projectedRiskTier: projPred.riskBand || projPred.riskLevel,
+      projectedRtoProbability: projPred.rtoProbability,
+      pointsReduction,
+      direction,
+      toggles,
+      detailedDeltas,
+      modelSource: basePred.modelSource,
+      modelVersion: basePred.modelVersion,
+      featureSchemaVersion: basePred.featureSchemaVersion,
+      artifactHash: basePred.artifactHash,
+    });
+  } catch (err) {
+    console.error('Counterfactual simulation error:', err);
+    return res.status(500).json({ error: 'Counterfactual inference failure' });
+  }
+});
+
+// ----------------------------------------------------
+// 1d. Compatibility ML PREDICTION API (POST /api/risk/predict)
 // ----------------------------------------------------
 app.post('/api/risk/predict', async (req, res) => {
   try {
-    const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
-    const addressLine = String(address.line1 || '');
-    const derivedAddressCompleteness = Math.min(1, 0.5 + (addressLine.length > 20 ? 0.25 : 0) + (address.landmark ? 0.15 : 0) + (address.pincode && address.city ? 0.1 : 0));
-    const payload = {
-      previous_orders: Number(customer.previous_orders || customer.totalOrders || 0),
-      previous_delivered_orders: Number(customer.previous_delivered_orders || customer.successfulDeliveries || 0),
-      previous_rto_orders: Number(customer.previous_rto_orders || customer.rtoOrders || 0),
-      order_value: Number(order.order_value || order.amount || 0),
-      payment_method: String(order.payment_method || order.paymentMethod || 'COD'),
-      pincode_rto_rate: Number(address.pincode_rto_rate || PINCODE_RISK_MAP[String(address.pincode || '')] || 0.18),
-      address_completeness: Number(address.address_completeness || derivedAddressCompleteness),
-      address_changes: Number(behavior.address_changes || 0),
-      checkout_attempts: Number(behavior.checkout_attempts || 1),
-      checkout_duration: Number(behavior.checkout_duration || 60),
-      device_linked_accounts: Number(customer.device_linked_accounts || 1),
-      intent_score: Number(behavior.intent_score || 50),
-    };
+    const payload = buildCanonicalPayload(req.body);
     const { stdout } = await execFileAsync(PYTHON_EXECUTABLE, [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)], { timeout: 5000 });
     return res.json(JSON.parse(stdout));
+
     /* Retained below only as historical context; it is no longer executable. */
     /*
     const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;

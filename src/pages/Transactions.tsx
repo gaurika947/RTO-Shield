@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   X,
@@ -7,8 +7,9 @@ import {
   Network,
   Sliders,
 } from 'lucide-react';
-import { simulateCounterfactualRisk } from '../engine/counterfactualEngine';
+import { simulateCounterfactualRisk, simulateCounterfactualRiskAuthoritative } from '../engine/counterfactualEngine';
 import type { Customer } from '../types/customer';
+import type { CounterfactualResult } from '../types/common';
 
 // Rich seed transactions for interactive demonstration
 const SEED_TRANSACTIONS = [
@@ -259,7 +260,29 @@ export default function Transactions() {
     removeSuspiciousNetwork: false,
   });
 
-  const counterfactualResult = useMemo(() => {
+  const [authoritativeResult, setAuthoritativeResult] = useState<CounterfactualResult | null>(null);
+
+  useEffect(() => {
+    if (!selectedTx) return;
+    let isCancelled = false;
+    simulateCounterfactualRiskAuthoritative(
+      selectedTx.customer as Customer,
+      { line1: selectedTx.address, city: selectedTx.city, state: 'State', pincode: selectedTx.pincode },
+      selectedTx.amount,
+      selectedTx.paymentMethod as any,
+      'DEV_ACTIVE',
+      cfToggles
+    ).then((res) => {
+      if (!isCancelled) {
+        setAuthoritativeResult(res);
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedTx, cfToggles]);
+
+  const fallbackResult = useMemo(() => {
     if (!selectedTx) return null;
     return simulateCounterfactualRisk(
       selectedTx.customer as Customer,
@@ -270,6 +293,8 @@ export default function Transactions() {
       cfToggles
     );
   }, [selectedTx, cfToggles]);
+
+  const counterfactualResult = authoritativeResult || fallbackResult;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-16 animate-slide-up">
@@ -540,18 +565,28 @@ export default function Transactions() {
 
                     {/* Simulation Delta */}
                     {counterfactualResult && (
-                      <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] text-blue-700 block uppercase font-semibold">Projected Score</span>
-                          <span className="text-xl font-black text-slate-900 font-mono">
-                            {counterfactualResult.projectedRiskScore}%
-                          </span>
+                      <div className="p-3 rounded-lg bg-blue-50/80 border border-blue-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-blue-700 block uppercase font-semibold">Projected Score</span>
+                            <span className="text-xl font-black text-slate-900 font-mono">
+                              {counterfactualResult.projectedRiskScore}%
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-emerald-700 font-bold uppercase block">Risk Reduction</span>
+                            <span className="text-base font-bold text-emerald-700 font-mono">
+                              ↓ {counterfactualResult.pointsReduction} pts
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-emerald-700 font-bold uppercase block">Risk Reduction</span>
-                          <span className="text-base font-bold text-emerald-700 font-mono">
-                            ↓ {counterfactualResult.pointsReduction} pts
-                          </span>
+                        <div className="pt-1.5 border-t border-blue-200/60 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                          <span>Inference: {counterfactualResult.modelSource === 'artifact' ? 'Authoritative GBDT Artifact' : 'Deterministic Fallback'}</span>
+                          {counterfactualResult.direction && (
+                            <span className={counterfactualResult.direction === 'DECREASE' ? 'text-emerald-600 font-bold' : 'text-slate-600'}>
+                              {counterfactualResult.direction === 'DECREASE' ? 'Risk Reduced' : 'Neutral'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}

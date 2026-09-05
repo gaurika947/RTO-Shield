@@ -9,10 +9,70 @@ import { predictRTO, type RawOrderContext } from './mlModelEngine';
  * Core Concept:
  * "What would have to change for this order to become safer?"
  *
- * Runs counterfactual feature permutations directly through the existing
- * ML scoring formula to calculate true mathematical risk reductions.
+ * Primary Path:
+ * Calls authoritative model backend via POST /api/ml/counterfactual,
+ * running canonical feature transformations through the authoritative GBDT artifact.
+ *
+ * Fallback Path:
+ * If backend API is unreachable (e.g. offline unit testing), evaluates
+ * via deterministic fallback engine with explicit fallback provenance.
  */
 
+export async function simulateCounterfactualRiskAuthoritative(
+  customer: Customer,
+  address: OrderAddress,
+  orderAmount: number,
+  paymentMethod: PaymentMethod,
+  deviceId: string,
+  toggles: CounterfactualToggleState
+): Promise<CounterfactualResult> {
+  try {
+    const response = await fetch('/api/ml/counterfactual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          previous_orders: customer.totalOrders,
+          previous_delivered_orders: customer.successfulDeliveries,
+          previous_rto_orders: customer.rtoOrders,
+          device_linked_accounts: customer.knownDevices?.length || 1,
+        },
+        order: {
+          order_value: orderAmount,
+          payment_method: paymentMethod,
+        },
+        address: {
+          line1: address.line1,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode,
+          landmark: address.landmark,
+        },
+        behavior: {
+          checkout_duration: 60,
+          checkout_attempts: 1,
+          address_changes: 0,
+        },
+        toggles,
+      }),
+    });
+
+    if (response.ok) {
+      const data: CounterfactualResult = await response.json();
+      return data;
+    }
+  } catch {
+    // API not reachable, proceed to deterministic fallback
+  }
+
+  // Graceful fallback
+  return simulateCounterfactualRisk(customer, address, orderAmount, paymentMethod, deviceId, toggles);
+}
+
+/**
+ * Synchronous simulation function.
+ * Used for offline execution, unit tests, and instant fallback calculation.
+ */
 export function simulateCounterfactualRisk(
   customer: Customer,
   address: OrderAddress,
@@ -78,14 +138,26 @@ export function simulateCounterfactualRisk(
   });
 
   const pointsReduction = Math.max(0, baseline.riskScore - projected.riskScore);
+  const direction =
+    projected.riskScore < baseline.riskScore
+      ? 'DECREASE'
+      : projected.riskScore > baseline.riskScore
+      ? 'INCREASE'
+      : 'NEUTRAL';
 
   return {
     currentRiskScore: baseline.riskScore,
     currentRiskTier: baseline.riskLevel,
+    currentRtoProbability: baseline.rtoProbability,
     projectedRiskScore: projected.riskScore,
     projectedRiskTier: projected.riskLevel,
+    projectedRtoProbability: projected.rtoProbability,
     pointsReduction,
+    direction,
     toggles,
     detailedDeltas,
+    modelSource: 'deterministic_fallback',
+    modelVersion: 'RTO Shield Deterministic Fallback v1',
+    featureSchemaVersion: 'rto-features-v1',
   };
 }
