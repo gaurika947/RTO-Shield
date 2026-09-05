@@ -464,6 +464,7 @@ export default function Checkout() {
               />
             ) : (
               <CheckoutPreview
+                key={selectedTx.id}
                 orderId={selectedTx.id}
                 orderAmount={selectedTx.orderAmount}
                 productName={selectedTx.productName}

@@ -144,16 +144,16 @@ export function verifyDecisionToken(tokenString) {
 // Authoritative Demo Orders Dictionary
 // ----------------------------------------------------
 export const AUTHORITATIVE_DEMO_ORDERS = {
-  'ORD_10491': { customerId: 'CUS_1002', name: 'Priya Sharma', orderAmount: 1899, pincode: '110001', expectedRiskTier: 'LOW' },
-  'ORD_10517': { customerId: 'CUS_1003', name: 'Neha Kapoor', orderAmount: 2499, pincode: '110016', expectedRiskTier: 'LOW' },
-  'ORD_10534': { customerId: 'CUS_1004', name: 'Ananya Sen', orderAmount: 3299, pincode: '560001', expectedRiskTier: 'MEDIUM' },
-  'ORD_10528': { customerId: 'CUS_1005', name: 'Vikram Malhotra', orderAmount: 4999, pincode: '201301', expectedRiskTier: 'MEDIUM' },
-  'ORD_10503': { customerId: 'CUS_1006', name: 'Rahul Verma', orderAmount: 7499, pincode: '800001', expectedRiskTier: 'HIGH' },
-  'ORD_10518': { customerId: 'CUS_1007', name: 'Aarav Mehta', orderAmount: 12999, pincode: '201301', expectedRiskTier: 'HIGH' },
-  'ORD_10549': { customerId: 'CUS_1008', name: 'Rohan Deshmukh', orderAmount: 2199, pincode: '411001', expectedRiskTier: 'MEDIUM' },
-  'ORD_10562': { customerId: 'CUS_1009', name: 'Sneha Mukherjee', orderAmount: 3899, pincode: '700001', expectedRiskTier: 'LOW' },
-  'ORD_10578': { customerId: 'CUS_1010', name: 'Karan Singhal', orderAmount: 8999, pincode: '201017', expectedRiskTier: 'HIGH' },
-  'ORD_10595': { customerId: 'CUS_1011', name: 'Sunita Patel', orderAmount: 1599, pincode: '380001', expectedRiskTier: 'LOW' },
+  'ORD_10491': { customerId: 'CUS_1002', name: 'Priya Sharma', orderAmount: 1899, alternateAmount: 1899, pincode: '226010', expectedRiskTier: 'LOW' },
+  'ORD_10517': { customerId: 'CUS_2001', name: 'Neha Kapoor', orderAmount: 1249, alternateAmount: 2499, pincode: '302001', expectedRiskTier: 'LOW' },
+  'ORD_10534': { customerId: 'CUS_5001', name: 'Ananya Sen', orderAmount: 1799, alternateAmount: 3299, pincode: '700001', expectedRiskTier: 'MEDIUM' },
+  'ORD_10528': { customerId: 'CUS_5002', name: 'Vikram Malhotra', orderAmount: 4199, alternateAmount: 4999, pincode: '560038', expectedRiskTier: 'MEDIUM' },
+  'ORD_10503': { customerId: 'CUS_4001', name: 'Rahul Verma', orderAmount: 3299, alternateAmount: 7499, pincode: '201017', expectedRiskTier: 'HIGH' },
+  'ORD_10518': { customerId: 'CUS_3001', name: 'Aarav Mehta', orderAmount: 2499, alternateAmount: 12999, pincode: '201309', expectedRiskTier: 'HIGH' },
+  'ORD_10549': { customerId: 'CUS_6001', name: 'Rohan Deshmukh', orderAmount: 3499, alternateAmount: 2199, pincode: '842001', expectedRiskTier: 'MEDIUM' },
+  'ORD_10562': { customerId: 'CUS_7001', name: 'Sneha Mukherjee', orderAmount: 2899, alternateAmount: 3899, pincode: '411001', expectedRiskTier: 'LOW' },
+  'ORD_10578': { customerId: 'CUS_8001', name: 'Karan Singhal', orderAmount: 2299, alternateAmount: 8999, pincode: '110001', expectedRiskTier: 'HIGH' },
+  'ORD_10595': { customerId: 'CUS_9001', name: 'Sunita Patel', orderAmount: 4999, alternateAmount: 1599, pincode: '380001', expectedRiskTier: 'LOW' },
 };
 
 // Pincode risk dictionary
@@ -640,7 +640,17 @@ app.post('/api/checkout/evaluate', checkoutLimiter, async (req, res) => {
     }
 
     const demoOrder = AUTHORITATIVE_DEMO_ORDERS[orderId];
-    const authoritativeAmount = demoOrder ? demoOrder.orderAmount : Number(order.order_value ?? order.amount ?? 1999);
+    let authoritativeAmount;
+    if (demoOrder) {
+      const reqVal = Number(order.order_value ?? order.amount);
+      if (reqVal && (Math.abs(demoOrder.orderAmount - reqVal) < 0.01 || (demoOrder.alternateAmount && Math.abs(demoOrder.alternateAmount - reqVal) < 0.01))) {
+        authoritativeAmount = reqVal;
+      } else {
+        authoritativeAmount = demoOrder.orderAmount;
+      }
+    } else {
+      authoritativeAmount = Number(order.order_value ?? order.amount ?? 1999);
+    }
 
     if (!Number.isFinite(authoritativeAmount) || authoritativeAmount <= 0) {
       return res.status(400).json({ error: 'Invalid order amount: must be a positive number' });
@@ -816,14 +826,16 @@ app.post('/api/checkout/validate-payment', checkoutLimiter, async (req, res) => 
       // If token not supplied, check authoritative demo store or re-evaluate
       const demoOrder = AUTHORITATIVE_DEMO_ORDERS[orderId];
       if (demoOrder) {
-        if (Math.abs(demoOrder.orderAmount - requestedAmount) > 0.01) {
+        const matchesPrimary = Math.abs(demoOrder.orderAmount - requestedAmount) <= 0.01;
+        const matchesAlt = demoOrder.alternateAmount && Math.abs(demoOrder.alternateAmount - requestedAmount) <= 0.01;
+        if (!matchesPrimary && !matchesAlt) {
           return res.status(400).json({
             valid: false,
             error: `Amount manipulation detected: Authoritative order amount is ₹${demoOrder.orderAmount}, received ₹${requestedAmount}.`,
             code: 'AMOUNT_MISMATCH',
           });
         }
-        authoritativeAmount = demoOrder.orderAmount;
+        authoritativeAmount = requestedAmount;
         authoritativeRiskLevel = demoOrder.expectedRiskTier;
         codAvailable = authoritativeRiskLevel !== 'HIGH';
         codFee = authoritativeRiskLevel === 'MEDIUM' ? 50 : 0;
