@@ -51,7 +51,10 @@ export interface MLPredictionResult {
   recommendedAction: DecisionAction;
   reasons: FeatureReason[];
   ringRisk: AbuseRingResult;
-  modelSource: 'primary_artifact' | 'deterministic_fallback';
+  modelSource: 'artifact' | 'deterministic_fallback';
+  featureSchemaVersion: string;
+  artifactHash?: string;
+  evaluationDataset?: string;
   inferenceLatencyMs?: number;
 }
 

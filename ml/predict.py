@@ -8,10 +8,20 @@ import sys
 import json
 import math
 import time
-from preprocess import extract_features_from_dict
+import pathlib
+from preprocess import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, extract_features_from_dict
 from explain import explain_prediction
+from model_manifest import DATASET_NAME, MANIFEST_NAME, MODEL_VERSION, sha256_file
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
+
+
+def load_manifest_dataset_version():
+    manifest_path = pathlib.Path(MODELS_DIR) / "model_manifest.json"
+    if not manifest_path.exists():
+        return None
+    with manifest_path.open("r", encoding="utf-8") as manifest_file:
+        return json.load(manifest_file)["dataset"]["version"]
 
 
 def classify_risk_tier(score):
@@ -25,18 +35,26 @@ def classify_risk_tier(score):
         return "LOW", "ALLOW_COD"
 
 
-def predict_single(order_payload):
+def predict_single(order_payload, require_artifact=False, model=None):
     """
     Computes RTO probability, risk score, risk level, intent score, and explainable reasons.
     """
+    if not isinstance(order_payload, dict):
+        raise ValueError("Prediction payload must be an object")
     features = extract_features_from_dict(order_payload)
+    if len(features) != len(FEATURE_NAMES):
+        raise ValueError(f"Expected {len(FEATURE_NAMES)} features, got {len(features)}")
     artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
+    if require_artifact and not os.path.exists(artifact_path):
+        raise FileNotFoundError("rto_model.joblib is required for authoritative evaluation")
     if os.path.exists(artifact_path):
         try:
             import joblib
             start = time.perf_counter()
-            model = joblib.load(artifact_path)
-            probability = float(model.predict_proba([features])[0][1])
+            loaded_model = model or joblib.load(artifact_path)
+            if not hasattr(loaded_model, "predict_proba") or getattr(loaded_model, "n_features_in_", None) != len(FEATURE_NAMES):
+                raise ValueError("Model artifact does not match the feature schema")
+            probability = float(loaded_model.predict_proba([features])[0][1])
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
             risk_score = max(0, min(100, int(round(probability * 100))))
             risk_level, action = classify_risk_tier(risk_score)
@@ -45,15 +63,18 @@ def predict_single(order_payload):
                 "riskScore": risk_score,
                 "riskLevel": risk_level,
                 "recommendedAction": action,
-                "modelVersion": "RTO Shield GBDT v1",
-                "modelSource": "primary_artifact",
+                "modelVersion": MODEL_VERSION,
+                "modelSource": "artifact",
+                "featureSchemaVersion": FEATURE_SCHEMA_VERSION,
+                "artifactHash": sha256_file(artifact_path),
+                "evaluationDataset": DATASET_NAME,
+                "evaluationDatasetVersion": load_manifest_dataset_version(),
+                "evaluationManifest": MANIFEST_NAME,
                 "inferenceLatencyMs": elapsed_ms,
                 "probabilityLabel": "Predicted RTO Probability",
             }
         except Exception as exc:
-            artifact_error = str(exc)
-        else:
-            artifact_error = None
+            raise RuntimeError(f"Model artifact is present but unusable: {exc}") from exc
     else:
         artifact_error = "rto_model.joblib not found"
 
@@ -139,6 +160,9 @@ def predict_single(order_payload):
         },
         "modelVersion": "RTO Shield Deterministic Fallback v1",
         "modelSource": "deterministic_fallback",
+        "featureSchemaVersion": FEATURE_SCHEMA_VERSION,
+        "artifactHash": None,
+        "evaluationDataset": None,
         "probabilityLabel": "Predicted RTO Probability (fallback approximation)",
         "artifactError": artifact_error,
     }

@@ -9,7 +9,8 @@ import sys
 import json
 import math
 import time
-from preprocess import FEATURE_NAMES, load_dataset
+from preprocess import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, load_dataset
+from model_manifest import MODEL_VERSION, build_manifest, write_manifest
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
@@ -90,7 +91,7 @@ def calculate_threshold_analysis(y_true, y_prob):
 
 
 def train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test):
-    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+    from sklearn.ensemble import GradientBoostingClassifier
     import joblib
 
     print("\n[+] Training Gradient Boosting / Ensemble Classifier on 52,242 samples...")
@@ -151,7 +152,7 @@ def train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test):
 
     model_trees_payload = {
         "model_type": "GradientBoostingClassifier",
-        "init_value": float(model.init_.prior),
+        "init_value": float(model.init_.class_prior_[1]),
         "learning_rate": float(model.learning_rate),
         "feature_names": FEATURE_NAMES,
         "n_estimators": len(trees_json),
@@ -163,54 +164,6 @@ def train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test):
     print(f"[✓] Exported portable tree ensemble to {os.path.join(MODELS_DIR, 'model_trees.json')}")
 
     return test_metrics, feat_imp, model, calculate_threshold_analysis(y_test, test_probs)
-
-
-def build_pure_python_ensemble(X_train, y_train, X_test, y_test):
-    """
-    High-precision statistical decision forest if scikit-learn is compiling.
-    Guarantees portable execution.
-    """
-    print("\n[+] Training Tree Ensemble Classifier...")
-    # Computes probabilistic feature split weights
-    X_test_probs = []
-    for x in X_test:
-        # Logistic risk estimator matching feature interactions
-        rto_rate = x[4]
-        cod = x[10]
-        pincode_rate = x[11]
-        addr_comp = x[12]
-        intent = x[21]
-        device_links = x[22]
-
-        score = -2.20
-        score += cod * 1.35
-        score += (rto_rate - 0.20) * 3.5
-        score += (pincode_rate - 0.15) * 2.8
-        score += (1.0 - addr_comp) * 0.90
-        score -= ((intent - 50.0) / 50.0) * 0.95
-        if device_links >= 3:
-            score += 1.30
-
-        prob = 1.0 / (1.0 + math.exp(-score))
-        X_test_probs.append(prob)
-
-    test_preds = [1 if p >= 0.5 else 0 for p in X_test_probs]
-    test_metrics = calculate_metrics(y_test, test_preds, X_test_probs)
-
-    feat_imp = [
-        {"feature": "customer_rto_rate", "importance": 0.2840},
-        {"feature": "cod_selected", "importance": 0.2210},
-        {"feature": "device_linked_accounts", "importance": 0.1450},
-        {"feature": "pincode_rto_rate", "importance": 0.1180},
-        {"feature": "intent_score", "importance": 0.0890},
-        {"feature": "address_completeness", "importance": 0.0540},
-        {"feature": "order_value", "importance": 0.0380},
-        {"feature": "checkout_duration", "importance": 0.0210},
-        {"feature": "address_changes", "importance": 0.0180},
-        {"feature": "previous_orders", "importance": 0.0120},
-    ]
-
-    return test_metrics, feat_imp, calculate_threshold_analysis(y_test, X_test_probs)
 
 
 def main():
@@ -235,19 +188,20 @@ def main():
     print(f"Train size: {len(X_train)} | Val size: {len(X_val)} | Test size: {len(X_test)}")
     print(f"Feature dimensions: {len(FEATURE_NAMES)}")
 
-    try:
-        metrics, feat_imp, _, threshold_analysis = train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test)
-        algorithm_name = "GradientBoostingClassifier"
-    except Exception as e:
-        print(f"Note: Using native ensemble builder ({e})")
-        metrics, feat_imp, threshold_analysis = build_pure_python_ensemble(X_train, y_train, X_test, y_test)
-        algorithm_name = "GradientBoostedEnsemble (Native Tree Classifier)"
+    metrics, feat_imp, model, threshold_analysis = train_sklearn_model(
+        X_train, y_train, X_val, y_val, X_test, y_test
+    )
+    algorithm_name = "GradientBoostingClassifier"
+    artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
+    if not os.path.exists(artifact_path):
+        raise RuntimeError("Training completed without producing rto_model.joblib")
+    manifest = build_manifest(artifact_path, metrics, threshold_analysis)
 
     model_meta = {
         "model_name": "RTO Shield Gradient Boosting",
-        "model_version": "RTO Shield GBDT v1",
+        "model_version": MODEL_VERSION,
         "algorithm": algorithm_name,
-        "training_date": "2026-09-01",
+        "training_date": manifest["training_timestamp_utc"],
         "dataset_name": "RTO Shield Synthetic Demo Dataset (75k orders)",
         "train_samples": len(X_train),
         "val_samples": len(X_val),
@@ -256,6 +210,8 @@ def main():
         "metrics": metrics,
         "threshold_analysis": threshold_analysis,
         "feature_importances": feat_imp[:12],
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "artifact_sha256": manifest["artifact"]["sha256"],
         "policy_thresholds": {
             "LOW": [0, 25],
             "MODERATE": [25, 50],
@@ -267,6 +223,7 @@ def main():
     meta_path = os.path.join(MODELS_DIR, "model_meta.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(model_meta, f, indent=2)
+    manifest_path = write_manifest(manifest)
 
     print("\n" + "=" * 60)
     print("TRAINING BENCHMARK RESULTS (TEST SET):")
@@ -282,6 +239,8 @@ def main():
     print(f"  [FN: {cm['fn']:5d} | TP: {cm['tp']:5d}]")
     print("=" * 60)
     print(f"[OK] Model metadata saved to {meta_path}")
+    print(f"[OK] Model manifest saved to {manifest_path}")
+    print(f"[OK] Artifact SHA-256: {manifest['artifact']['sha256']}")
 
 
 if __name__ == "__main__":

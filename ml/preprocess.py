@@ -38,6 +38,7 @@ FEATURE_NAMES = [
 ]
 
 CATEGORIES = ["ELECTRONICS", "FASHION", "BEAUTY", "HOME", "ACCESSORIES"]
+FEATURE_SCHEMA_VERSION = "rto-features-v1"
 
 
 def extract_features_from_dict(row):

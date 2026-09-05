@@ -24,7 +24,12 @@ export interface MLInferenceResult {
   intentScore: number;
   reasons: FeatureReason[];
   source: 'backend' | 'client' | 'fallback';
-  modelSource: 'primary_artifact' | 'deterministic_fallback';
+  modelSource: 'artifact' | 'deterministic_fallback';
+  featureSchemaVersion: string;
+  artifactHash?: string;
+  evaluationDataset?: string;
+  evaluationDatasetVersion?: string;
+  evaluationManifest?: string;
   inferenceLatencyMs?: number;
 }
 
@@ -86,7 +91,12 @@ export async function runMLInference(
         intentScore: data.intentScore ?? 50,
         reasons: data.reasons ?? [],
         source: 'backend',
-        modelSource: data.modelSource === 'primary_artifact' ? 'primary_artifact' : 'deterministic_fallback',
+        modelSource: data.modelSource === 'artifact' ? 'artifact' : 'deterministic_fallback',
+        featureSchemaVersion: data.featureSchemaVersion ?? 'rto-features-v1',
+        artifactHash: data.artifactHash,
+        evaluationDataset: data.evaluationDataset,
+        evaluationDatasetVersion: data.evaluationDatasetVersion,
+        evaluationManifest: data.evaluationManifest,
         inferenceLatencyMs: data.inferenceLatencyMs,
       };
     }
@@ -121,6 +131,7 @@ export async function runMLInference(
       reasons: result.reasons,
       source: 'client',
       modelSource: 'deterministic_fallback',
+      featureSchemaVersion: result.featureSchemaVersion,
     };
   } catch {
     // Both failed
@@ -138,5 +149,6 @@ export async function runMLInference(
     reasons: [{ feature: 'ml_unavailable', impact: 'low', points: 0, message: 'ML model unavailable — using deterministic risk signals only' }],
     source: 'fallback',
     modelSource: 'deterministic_fallback',
+    featureSchemaVersion: 'rto-features-v1',
   };
 }

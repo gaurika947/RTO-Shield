@@ -5,8 +5,10 @@ Validates model performance on the held-out test dataset (11,360 orders).
 
 import os
 import json
-from preprocess import load_dataset
+import joblib
+from preprocess import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, load_dataset
 from train import calculate_metrics, calculate_threshold_analysis
+from model_manifest import MANIFEST_NAME, sha256_file
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
@@ -21,8 +23,20 @@ def main():
     print("=" * 60)
 
     if not os.path.exists(test_path):
-        print(f"[!] Test dataset not found at {test_path}")
-        return
+        raise FileNotFoundError(f"Test dataset not found at {test_path}")
+
+    artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
+    if not os.path.exists(artifact_path):
+        raise FileNotFoundError("rto_model.joblib is required; evaluation refuses to use fallback inference")
+    manifest_path = os.path.join(MODELS_DIR, MANIFEST_NAME)
+    if not os.path.exists(manifest_path):
+        raise FileNotFoundError("model_manifest.json is required for evaluation provenance")
+    with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+        manifest = json.load(manifest_file)
+    if manifest["artifact"]["sha256"] != sha256_file(artifact_path):
+        raise RuntimeError("Artifact SHA-256 does not match model_manifest.json")
+    if manifest["feature_schema_version"] != FEATURE_SCHEMA_VERSION or manifest["feature_count"] != len(FEATURE_NAMES):
+        raise RuntimeError("Model manifest feature schema does not match preprocessing")
 
     from predict import predict_single
     import csv
@@ -30,12 +44,15 @@ def main():
     X_test_preds = []
     X_test_probs = []
     y_test = []
+    model = joblib.load(artifact_path)
 
     with open(test_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             target = int(row.get("is_rto", 0))
-            pred = predict_single(row)
+            pred = predict_single(row, require_artifact=True, model=model)
+            if pred["modelSource"] != "artifact":
+                raise RuntimeError("Evaluation received a non-artifact prediction")
             prob = pred["rtoProbability"]
             binary_pred = 1 if prob >= 0.5 else 0
 
