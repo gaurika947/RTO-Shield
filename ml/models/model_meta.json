@@ -1,7 +1,9 @@
 {
-  "model_name": "RTO Sense Tabular ML Risk Engine",
-  "model_version": "v1.0",
-  "algorithm": "GradientBoostedEnsemble (Native Tree Classifier)",
+  "model_name": "RTO Shield Deterministic Fallback",
+  "model_version": "Fallback v1",
+  "algorithm": "Deterministic approximation (GBDT artifact unavailable)",
+  "evaluation_model_source": "deterministic_fallback",
+  "inference_artifact_available": false,
   "training_date": "2026-09-01",
   "dataset_name": "RTO Sense Synthetic Demo Dataset (75k orders)",
   "train_samples": 52242,
@@ -38,61 +40,28 @@
     "cat_ACCESSORIES"
   ],
   "metrics": {
-    "accuracy": 0.9688,
-    "precision": 0.9256,
-    "recall": 0.9188,
-    "f1": 0.9222,
-    "fpr": 0.0186,
-    "roc_auc": 0.9941,
+    "accuracy": 0.9842,
+    "precision": 0.9722,
+    "recall": 0.9485,
+    "f1": 0.9602,
+    "fpr": 0.0068,
+    "fnr": 0.0515,
+    "roc_auc": 0.9986,
     "confusion_matrix": {
-      "tp": 2104,
-      "fp": 169,
-      "tn": 8901,
-      "fn": 186
+      "tp": 2172,
+      "fp": 62,
+      "tn": 9008,
+      "fn": 118
     },
     "total_samples": 11360
   },
-  "feature_importances": [
-    {
-      "feature": "customer_rto_rate",
-      "importance": 0.284
-    },
-    {
-      "feature": "cod_selected",
-      "importance": 0.221
-    },
-    {
-      "feature": "device_linked_accounts",
-      "importance": 0.145
-    },
-    {
-      "feature": "pincode_rto_rate",
-      "importance": 0.118
-    },
-    {
-      "feature": "intent_score",
-      "importance": 0.089
-    },
-    {
-      "feature": "address_completeness",
-      "importance": 0.054
-    },
-    {
-      "feature": "order_value",
-      "importance": 0.038
-    },
-    {
-      "feature": "checkout_duration",
-      "importance": 0.021
-    },
-    {
-      "feature": "address_changes",
-      "importance": 0.018
-    },
-    {
-      "feature": "previous_orders",
-      "importance": 0.012
-    }
+  "feature_importances": [],
+  "threshold_analysis": [
+    { "threshold": 0.3, "precision": 0.8034, "recall": 0.9978, "f1": 0.8901, "fpr": 0.0616, "fnr": 0.0022 },
+    { "threshold": 0.4, "precision": 0.9106, "recall": 0.983, "f1": 0.9454, "fpr": 0.0244, "fnr": 0.017 },
+    { "threshold": 0.5, "precision": 0.9722, "recall": 0.9485, "f1": 0.9602, "fpr": 0.0068, "fnr": 0.0515 },
+    { "threshold": 0.6, "precision": 0.9928, "recall": 0.8978, "f1": 0.9429, "fpr": 0.0017, "fnr": 0.1022 },
+    { "threshold": 0.7, "precision": 0.9995, "recall": 0.8293, "f1": 0.9064, "fpr": 0.0001, "fnr": 0.1707 }
   ],
   "policy_thresholds": {
     "LOW": [

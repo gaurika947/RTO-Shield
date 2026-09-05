@@ -5,6 +5,8 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 config(); // Load .env
 
@@ -16,6 +18,8 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = 3001;
+const execFileAsync = promisify(execFile);
+const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python';
 
 // Gemini API key — server-side ONLY
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -25,7 +29,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'RTO-Shield API',
-    modelVersion: 'RTO-XGB-v1',
+    modelVersion: 'RTO Shield GBDT v1',
     modelStatus: 'ACTIVE_SINGLETON',
     geminiStatus: GEMINI_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
   });
@@ -71,11 +75,33 @@ function classifyRiskTier(score) {
 
 // ----------------------------------------------------
 // 1a. CLEAN ML PREDICTION API (POST /api/ml/rto-predict)
-// Returns: rtoProbability, predictedClass, modelVersion, confidence
+// Returns: predicted RTO probability, model source, model version, latency
 // ----------------------------------------------------
-app.post('/api/ml/rto-predict', (req, res) => {
+app.post('/api/ml/rto-predict', async (req, res) => {
   try {
     const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
+    const addressLine = String(address.line1 || '');
+    const derivedAddressCompleteness = Math.min(1, 0.5 + (addressLine.length > 20 ? 0.25 : 0) + (address.landmark ? 0.15 : 0) + (address.pincode && address.city ? 0.1 : 0));
+    const payload = {
+      previous_orders: Number(customer.previous_orders || 0),
+      previous_delivered_orders: Number(customer.previous_delivered_orders || 0),
+      previous_rto_orders: Number(customer.previous_rto_orders || 0),
+      previous_cancelled_orders: Number(customer.previous_cancelled_orders || 0),
+      order_value: Number(order.order_value || 0),
+      payment_method: String(order.payment_method || 'COD'),
+      pincode_rto_rate: Number(address.pincode_rto_rate || PINCODE_RISK_MAP[String(address.pincode || '')] || 0.18),
+      address_completeness: Number(address.address_completeness || derivedAddressCompleteness),
+      address_changes: Number(behavior.address_changes || 0),
+      checkout_attempts: Number(behavior.checkout_attempts || 1),
+      checkout_duration: Number(behavior.checkout_duration || 60),
+      device_linked_accounts: Number(customer.device_linked_accounts || 1),
+      intent_score: Number(behavior.intent_score || 50),
+    };
+    const { stdout } = await execFileAsync(PYTHON_EXECUTABLE, [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)], { timeout: 5000 });
+    const prediction = JSON.parse(stdout);
+    return res.json(prediction);
+    /* Legacy inline scoring path intentionally disabled. */
+    /*
 
     const prevOrders = Number(customer.previous_orders || customer.totalOrders || 0);
     const prevDelivered = Number(customer.previous_delivered_orders || customer.successfulDeliveries || 0);
@@ -127,11 +153,11 @@ app.post('/api/ml/rto-predict', (req, res) => {
     return res.json({
       rtoProbability: Math.round(prob * 1000) / 1000,
       predictedClass: prob >= 0.5 ? 1 : 0,
-      modelVersion: 'RTO-XGB-v1',
+      modelVersion: 'RTO Shield GBDT v1',
       confidence: Math.round((1 - Math.abs(prob - 0.5) * 0.5 + 0.5) * 100) / 100,
       riskScore: Math.max(0, Math.min(100, Math.round(prob * 100))),
       intentScore: Math.round(intentScore * 10) / 10,
-    });
+    }); */
   } catch (err) {
     console.error('ML prediction error:', err);
     return res.status(500).json({ error: 'ML inference failure' });
@@ -139,10 +165,31 @@ app.post('/api/ml/rto-predict', (req, res) => {
 });
 
 // ----------------------------------------------------
-// 1b. LEGACY ML PREDICTION API (POST /api/risk/predict)
+// 1b. Compatibility ML PREDICTION API (POST /api/risk/predict)
 // ----------------------------------------------------
-app.post('/api/risk/predict', (req, res) => {
+app.post('/api/risk/predict', async (req, res) => {
   try {
+    const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
+    const addressLine = String(address.line1 || '');
+    const derivedAddressCompleteness = Math.min(1, 0.5 + (addressLine.length > 20 ? 0.25 : 0) + (address.landmark ? 0.15 : 0) + (address.pincode && address.city ? 0.1 : 0));
+    const payload = {
+      previous_orders: Number(customer.previous_orders || customer.totalOrders || 0),
+      previous_delivered_orders: Number(customer.previous_delivered_orders || customer.successfulDeliveries || 0),
+      previous_rto_orders: Number(customer.previous_rto_orders || customer.rtoOrders || 0),
+      order_value: Number(order.order_value || order.amount || 0),
+      payment_method: String(order.payment_method || order.paymentMethod || 'COD'),
+      pincode_rto_rate: Number(address.pincode_rto_rate || PINCODE_RISK_MAP[String(address.pincode || '')] || 0.18),
+      address_completeness: Number(address.address_completeness || derivedAddressCompleteness),
+      address_changes: Number(behavior.address_changes || 0),
+      checkout_attempts: Number(behavior.checkout_attempts || 1),
+      checkout_duration: Number(behavior.checkout_duration || 60),
+      device_linked_accounts: Number(customer.device_linked_accounts || 1),
+      intent_score: Number(behavior.intent_score || 50),
+    };
+    const { stdout } = await execFileAsync(PYTHON_EXECUTABLE, [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)], { timeout: 5000 });
+    return res.json(JSON.parse(stdout));
+    /* Retained below only as historical context; it is no longer executable. */
+    /*
     const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
 
     const prevOrders = Number(customer.previous_orders || customer.totalOrders || 0);
@@ -285,7 +332,7 @@ app.post('/api/risk/predict', (req, res) => {
         clusterSize: deviceLinks,
         signals: signals.length ? signals : ['No abuse cluster anomalies detected'],
       },
-    });
+    }); */
   } catch (err) {
     console.error('Risk prediction error:', err);
     return res.status(500).json({ error: 'Internal risk prediction failure' });
@@ -300,7 +347,11 @@ app.get('/api/ml/metrics', (req, res) => {
   if (fs.existsSync(metaPath)) {
     try {
       const data = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-      return res.json(data);
+      return res.json({
+        ...data,
+        inference_artifact_available: fs.existsSync(path.join(__dirname, '..', 'ml', 'models', 'rto_model.joblib')),
+        evaluation_source: 'ml/evaluate.py on held-out test set',
+      });
     } catch (err) {
       console.error('Error reading model metadata:', err);
     }
@@ -308,9 +359,9 @@ app.get('/api/ml/metrics', (req, res) => {
 
   // Baseline fallback if file not found
   return res.json({
-    model_name: 'RTO Shield Tabular ML Risk Engine',
-    model_version: 'v1.0',
-    algorithm: 'GradientBoostingClassifier (XGBoost/GBM Tabular)',
+    model_name: 'RTO Shield Gradient Boosting',
+    model_version: 'RTO Shield GBDT v1',
+    algorithm: 'GradientBoostingClassifier',
     training_date: '2026-09-01',
     dataset_name: 'RTO Shield Synthetic Demo Dataset (75k orders)',
     train_samples: 52242,

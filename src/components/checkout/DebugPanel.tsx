@@ -84,7 +84,7 @@ export const DebugPanel: React.FC<Props> = ({
           {/* Section 2: ML Model Prediction */}
           <div>
             <div className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider mb-1">
-              2. ML Classifier Output (RTO-XGB-v1)
+              2. ML Classifier Output (RTO Shield GBDT v1)
             </div>
             <div className="bg-slate-950 p-3 rounded border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
               <div>
@@ -94,14 +94,14 @@ export const DebugPanel: React.FC<Props> = ({
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 block">Confidence Interval:</span>
+                <span className="text-slate-500 block">Probability label:</span>
                 <span className="text-slate-200 font-bold">
-                  {riskResult ? `${Math.round((riskResult.mlConfidence || 0.88) * 100)}%` : 'Pending'}
+                  Predicted RTO Probability
                 </span>
               </div>
               <div>
                 <span className="text-slate-500 block">Model Version:</span>
-                <span className="text-slate-200 font-bold">{riskResult?.mlModelVersion || 'RTO-XGB-v1'}</span>
+                <span className="text-slate-200 font-bold">{riskResult?.mlModelVersion || 'RTO Shield GBDT v1'}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Model Status:</span>

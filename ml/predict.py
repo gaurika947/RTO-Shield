@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import math
+import time
 from preprocess import extract_features_from_dict
 from explain import explain_prediction
 
@@ -29,6 +30,32 @@ def predict_single(order_payload):
     Computes RTO probability, risk score, risk level, intent score, and explainable reasons.
     """
     features = extract_features_from_dict(order_payload)
+    artifact_path = os.path.join(MODELS_DIR, "rto_model.joblib")
+    if os.path.exists(artifact_path):
+        try:
+            import joblib
+            start = time.perf_counter()
+            model = joblib.load(artifact_path)
+            probability = float(model.predict_proba([features])[0][1])
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            risk_score = max(0, min(100, int(round(probability * 100))))
+            risk_level, action = classify_risk_tier(risk_score)
+            return {
+                "rtoProbability": round(probability, 4),
+                "riskScore": risk_score,
+                "riskLevel": risk_level,
+                "recommendedAction": action,
+                "modelVersion": "RTO Shield GBDT v1",
+                "modelSource": "primary_artifact",
+                "inferenceLatencyMs": elapsed_ms,
+                "probabilityLabel": "Predicted RTO Probability",
+            }
+        except Exception as exc:
+            artifact_error = str(exc)
+        else:
+            artifact_error = None
+    else:
+        artifact_error = "rto_model.joblib not found"
 
     # Feature mapping
     prev_orders = features[0]
@@ -109,7 +136,11 @@ def predict_single(order_payload):
             "ringDetected": ring_detected,
             "clusterSize": device_links,
             "signals": signals,
-        }
+        },
+        "modelVersion": "RTO Shield Deterministic Fallback v1",
+        "modelSource": "deterministic_fallback",
+        "probabilityLabel": "Predicted RTO Probability (fallback approximation)",
+        "artifactError": artifact_error,
     }
 
 

@@ -9,7 +9,6 @@ interface Props {
 export const MLModelResult: React.FC<Props> = ({ result }) => {
   const prob = result.rtoProbability ?? 0;
   const probPercent = Math.round(prob * 100);
-  const confPercent = Math.round((result.mlConfidence ?? 0.85) * 100);
   const isHighRisk = prob >= 0.5;
 
   return (
@@ -26,7 +25,7 @@ export const MLModelResult: React.FC<Props> = ({ result }) => {
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-semibold text-slate-100">RTO Machine Learning Model</h4>
               <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-blue-950 text-blue-300 border border-blue-800">
-                {result.mlModelVersion || 'RTO-XGB-v1'}
+                {result.mlModelVersion || 'RTO Shield GBDT v1'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
@@ -82,15 +81,15 @@ export const MLModelResult: React.FC<Props> = ({ result }) => {
           </div>
         </div>
 
-        {/* Model Confidence */}
+        {/* Model source */}
         <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800">
-          <div className="text-[11px] text-slate-400 mb-1">Model Confidence</div>
+          <div className="text-[11px] text-slate-400 mb-1">Inference source</div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold font-mono text-slate-100">{confPercent}%</span>
+            <span className="text-sm font-bold font-mono text-slate-100">{result.mlAvailable ? 'API / fallback' : 'Unavailable'}</span>
           </div>
           <div className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
             <Activity className="w-3 h-3 text-blue-400" />
-            Empirical confidence interval
+            Predicted probability, not calibrated confidence
           </div>
         </div>
 

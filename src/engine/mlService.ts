@@ -18,12 +18,14 @@ export interface MLInferenceResult {
   available: boolean;
   rtoProbability: number;     // 0–1
   predictedClass: number;     // 0 or 1
-  modelVersion: string;       // e.g. 'RTO-XGB-v1'
-  confidence: number;         // 0–1
+  modelVersion: string;
+  confidence: number;         // calibrated confidence is unavailable unless explicitly implemented
   riskScore: number;          // 0–100 (ML-only score, NOT final score)
   intentScore: number;
   reasons: FeatureReason[];
   source: 'backend' | 'client' | 'fallback';
+  modelSource: 'primary_artifact' | 'deterministic_fallback';
+  inferenceLatencyMs?: number;
 }
 
 const ML_API_URL = '/api/ml/rto-predict';
@@ -78,12 +80,14 @@ export async function runMLInference(
         available: true,
         rtoProbability: data.rtoProbability ?? 0.5,
         predictedClass: data.rtoProbability >= 0.5 ? 1 : 0,
-        modelVersion: 'RTO-XGB-v1',
-        confidence: Math.min(1, Math.max(0, 1 - Math.abs(data.rtoProbability - 0.5) * 0.5 + 0.5)),
+        modelVersion: data.modelVersion ?? 'RTO Shield GBDT v1',
+        confidence: 0,
         riskScore: data.riskScore ?? Math.round((data.rtoProbability ?? 0.5) * 100),
         intentScore: data.intentScore ?? 50,
         reasons: data.reasons ?? [],
         source: 'backend',
+        modelSource: data.modelSource === 'primary_artifact' ? 'primary_artifact' : 'deterministic_fallback',
+        inferenceLatencyMs: data.inferenceLatencyMs,
       };
     }
   } catch {
@@ -110,12 +114,13 @@ export async function runMLInference(
       available: true,
       rtoProbability: result.rtoProbability,
       predictedClass: result.rtoProbability >= 0.5 ? 1 : 0,
-      modelVersion: 'RTO-XGB-v1',
-      confidence: Math.min(1, Math.max(0, 1 - Math.abs(result.rtoProbability - 0.5) * 0.5 + 0.5)),
+      modelVersion: 'RTO Shield Deterministic Fallback v1',
+      confidence: 0,
       riskScore: result.riskScore,
       intentScore: result.intentScore,
       reasons: result.reasons,
       source: 'client',
+      modelSource: 'deterministic_fallback',
     };
   } catch {
     // Both failed
@@ -132,5 +137,6 @@ export async function runMLInference(
     intentScore: 50,
     reasons: [{ feature: 'ml_unavailable', impact: 'low', points: 0, message: 'ML model unavailable — using deterministic risk signals only' }],
     source: 'fallback',
+    modelSource: 'deterministic_fallback',
   };
 }

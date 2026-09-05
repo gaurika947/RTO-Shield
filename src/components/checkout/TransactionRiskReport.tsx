@@ -196,8 +196,8 @@ export const TransactionRiskReport: React.FC<Props> = ({
             />
           </div>
           <div className="text-[11px] text-slate-500 mt-2 flex items-center justify-between">
-            <span>Model: <strong className="font-mono text-slate-700">{riskResult.mlModelVersion || 'RTO-XGB-v1'}</strong></span>
-            <span>Confidence: <strong className="text-slate-700">{Math.round((riskResult.mlConfidence || 0.88) * 100)}%</strong></span>
+            <span>Model: <strong className="font-mono text-slate-700">{riskResult.mlModelVersion || 'RTO Shield GBDT v1'}</strong></span>
+            <span>Probability is not calibrated confidence</span>
           </div>
         </div>
 
@@ -422,7 +422,7 @@ export const TransactionRiskReport: React.FC<Props> = ({
             <div className="space-y-2 text-xs">
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Model Architecture</span>
-                <span className="font-mono font-semibold text-slate-800">{riskResult.mlModelVersion || 'RTO-XGB-v1'}</span>
+                <span className="font-mono font-semibold text-slate-800">{riskResult.mlModelVersion || 'RTO Shield GBDT v1'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Inference Engine</span>

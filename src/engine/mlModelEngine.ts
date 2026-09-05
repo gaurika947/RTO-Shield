@@ -279,5 +279,6 @@ export function predictRTO(context: RawOrderContext): MLPredictionResult {
       clusterSize: deviceLinks,
       signals: signals.length ? signals : ['No cluster anomalies detected'],
     },
+    modelSource: 'deterministic_fallback',
   };
 }

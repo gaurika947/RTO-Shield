@@ -50,39 +50,7 @@ export default function RTOAnalytics() {
     fetch('/api/ml/metrics')
       .then((r) => r.json())
       .then((data) => setModelMeta(data))
-      .catch(() => {
-        // Fallback static metadata
-        setModelMeta({
-          model_name: 'RTO Sense Tabular ML Risk Engine',
-          model_version: 'v1.0',
-          algorithm: 'GradientBoostingClassifier (XGBoost/GBM Tabular)',
-          training_date: '2026-09-01',
-          dataset_name: 'RTO Sense Synthetic Demo Dataset (75k orders)',
-          train_samples: 52242,
-          val_samples: 11398,
-          test_samples: 11360,
-          metrics: {
-            roc_auc: 0.9941,
-            f1: 0.9222,
-            precision: 0.9256,
-            recall: 0.9188,
-            accuracy: 0.9688,
-            fpr: 0.0186,
-            confusion_matrix: { tp: 2104, fp: 169, tn: 8901, fn: 186 },
-            total_samples: 11360,
-          },
-          feature_importances: [
-            { feature: 'customer_rto_rate', importance: 0.284 },
-            { feature: 'cod_selected', importance: 0.221 },
-            { feature: 'device_linked_accounts', importance: 0.145 },
-            { feature: 'pincode_rto_rate', importance: 0.118 },
-            { feature: 'intent_score', importance: 0.089 },
-            { feature: 'address_completeness', importance: 0.054 },
-            { feature: 'order_value', importance: 0.038 },
-            { feature: 'checkout_duration', importance: 0.021 },
-          ],
-        });
-      });
+      .catch(() => setModelMeta(null));
   }, []);
 
   // Outcome distribution
@@ -120,7 +88,7 @@ export default function RTOAnalytics() {
   const totalRTO = orders.filter((o) => o.outcome === 'RTO').length;
   const rtoLoss = orders.filter((o) => o.outcome === 'RTO').reduce((s, o) => s + o.amount, 0);
 
-  const cm = modelMeta?.metrics.confusion_matrix || { tp: 2104, fp: 169, tn: 8901, fn: 186 };
+  const cm = modelMeta?.metrics.confusion_matrix;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-slide-up">
@@ -261,25 +229,25 @@ export default function RTOAnalytics() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-1">
                   <span className="text-[11px] font-bold text-emerald-800 uppercase block">True Negatives (TN)</span>
-                  <div className="text-3xl font-extrabold font-mono text-emerald-900">{cm.tn.toLocaleString()}</div>
+                  <div className="text-3xl font-extrabold font-mono text-emerald-900">{cm?.tn.toLocaleString() ?? '—'}</div>
                   <p className="text-[11px] text-emerald-700">Genuine COD orders correctly allowed</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-center space-y-1">
                   <span className="text-[11px] font-bold text-amber-800 uppercase block">False Positives (FP)</span>
-                  <div className="text-3xl font-extrabold font-mono text-amber-900">{cm.fp.toLocaleString()}</div>
+                  <div className="text-3xl font-extrabold font-mono text-amber-900">{cm?.fp.toLocaleString() ?? '—'}</div>
                   <p className="text-[11px] text-amber-700">Legitimate orders softly nudged</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-center space-y-1">
                   <span className="text-[11px] font-bold text-rose-800 uppercase block">False Negatives (FN)</span>
-                  <div className="text-3xl font-extrabold font-mono text-rose-900">{cm.fn.toLocaleString()}</div>
+                  <div className="text-3xl font-extrabold font-mono text-rose-900">{cm?.fn.toLocaleString() ?? '—'}</div>
                   <p className="text-[11px] text-rose-700">Missed RTO orders allowed as COD</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-center space-y-1">
                   <span className="text-[11px] font-bold text-blue-800 uppercase block">True Positives (TP)</span>
-                  <div className="text-3xl font-extrabold font-mono text-blue-900">{cm.tp.toLocaleString()}</div>
+                  <div className="text-3xl font-extrabold font-mono text-blue-900">{cm?.tp.toLocaleString() ?? '—'}</div>
                   <p className="text-[11px] text-blue-700">RTO orders successfully intercepted</p>
                 </div>
               </div>

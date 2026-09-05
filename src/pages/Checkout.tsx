@@ -25,7 +25,7 @@ const PIPELINE_STAGES: PipelineStepInfo[] = [
   { key: 'address', name: 'Address intelligence', detail: 'Analyzing address completeness, premise structure & zone safety...' },
   { key: 'network', name: 'Network signals', detail: 'Scanning graph clusters, shared IP subnets & linked accounts...' },
   { key: 'velocity', name: 'Velocity', detail: 'Measuring short-window COD order burst rates against baseline...' },
-  { key: 'ml', name: 'RTO prediction', detail: 'Running gradient-boosted RTO-XGB-v1 inference...' },
+  { key: 'ml', name: 'RTO prediction', detail: 'Running RTO Shield Gradient Boosting inference...' },
 ];
 
 export default function Checkout() {
@@ -166,7 +166,7 @@ export default function Checkout() {
         riskResult: evaluatedRisk,
         decision: evaluatedDecision,
         paymentPolicy: evaluatedDecision.paymentPolicy,
-        modelVersion: evaluatedRisk.mlModelVersion || 'RTO-XGB-v1',
+        modelVersion: evaluatedRisk.mlModelVersion || 'RTO Shield GBDT v1',
         timestamp: Date.now(),
       };
 

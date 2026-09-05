@@ -51,6 +51,8 @@ export interface MLPredictionResult {
   recommendedAction: DecisionAction;
   reasons: FeatureReason[];
   ringRisk: AbuseRingResult;
+  modelSource: 'primary_artifact' | 'deterministic_fallback';
+  inferenceLatencyMs?: number;
 }
 
 export interface CustomerTrustPassport {

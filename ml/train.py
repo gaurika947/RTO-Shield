@@ -63,12 +63,30 @@ def calculate_metrics(y_true, y_pred, y_prob):
         "recall": round(recall, 4),
         "f1": round(f1, 4),
         "fpr": round(fpr, 4),
+        "fnr": round(fn / (fn + tp), 4) if (fn + tp) > 0 else 0.0,
         "roc_auc": round(roc_auc, 4),
         "confusion_matrix": {
             "tp": tp, "fp": fp, "tn": tn, "fn": fn
         },
         "total_samples": total
     }
+
+
+def calculate_threshold_analysis(y_true, y_prob):
+    """Evaluate policy thresholds without changing the held-out test set."""
+    analysis = []
+    for threshold in (0.30, 0.40, 0.50, 0.60, 0.70):
+        predictions = [1 if probability >= threshold else 0 for probability in y_prob]
+        metrics = calculate_metrics(y_true, predictions, y_prob)
+        analysis.append({
+            "threshold": threshold,
+            "precision": metrics["precision"],
+            "recall": metrics["recall"],
+            "f1": metrics["f1"],
+            "fpr": metrics["fpr"],
+            "fnr": metrics["fnr"],
+        })
+    return analysis
 
 
 def train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test):
@@ -144,7 +162,7 @@ def train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test):
         json.dump(model_trees_payload, f)
     print(f"[✓] Exported portable tree ensemble to {os.path.join(MODELS_DIR, 'model_trees.json')}")
 
-    return test_metrics, feat_imp, model
+    return test_metrics, feat_imp, model, calculate_threshold_analysis(y_test, test_probs)
 
 
 def build_pure_python_ensemble(X_train, y_train, X_test, y_test):
@@ -192,7 +210,7 @@ def build_pure_python_ensemble(X_train, y_train, X_test, y_test):
         {"feature": "previous_orders", "importance": 0.0120},
     ]
 
-    return test_metrics, feat_imp
+    return test_metrics, feat_imp, calculate_threshold_analysis(y_test, X_test_probs)
 
 
 def main():
@@ -218,16 +236,16 @@ def main():
     print(f"Feature dimensions: {len(FEATURE_NAMES)}")
 
     try:
-        metrics, feat_imp, _ = train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test)
-        algorithm_name = "GradientBoostingClassifier (XGBoost/GBM Tabular)"
+        metrics, feat_imp, _, threshold_analysis = train_sklearn_model(X_train, y_train, X_val, y_val, X_test, y_test)
+        algorithm_name = "GradientBoostingClassifier"
     except Exception as e:
         print(f"Note: Using native ensemble builder ({e})")
-        metrics, feat_imp = build_pure_python_ensemble(X_train, y_train, X_test, y_test)
+        metrics, feat_imp, threshold_analysis = build_pure_python_ensemble(X_train, y_train, X_test, y_test)
         algorithm_name = "GradientBoostedEnsemble (Native Tree Classifier)"
 
     model_meta = {
-        "model_name": "RTO Shield Tabular ML Risk Engine",
-        "model_version": "v1.0",
+        "model_name": "RTO Shield Gradient Boosting",
+        "model_version": "RTO Shield GBDT v1",
         "algorithm": algorithm_name,
         "training_date": "2026-09-01",
         "dataset_name": "RTO Shield Synthetic Demo Dataset (75k orders)",
@@ -236,6 +254,7 @@ def main():
         "test_samples": len(X_test),
         "features_used": FEATURE_NAMES,
         "metrics": metrics,
+        "threshold_analysis": threshold_analysis,
         "feature_importances": feat_imp[:12],
         "policy_thresholds": {
             "LOW": [0, 25],

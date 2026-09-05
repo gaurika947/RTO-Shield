@@ -77,8 +77,8 @@ export interface RiskResult {
   tier: RiskTier;
   confidence: number;    // 0–1, overall evidence quality (SEPARATE from score)
   rtoProbability: number; // 0.00 to 1.00 from ML Model — SEPARATE from score
-  mlModelVersion: string; // e.g. 'RTO-XGB-v1'
-  mlConfidence: number;  // 0–1, model confidence
+  mlModelVersion: string;
+  mlConfidence: number;  // reserved for calibrated confidence; currently 0 when unavailable
   mlAvailable: boolean;  // whether ML inference succeeded
   intentScore: number;   // 0 to 100 derived behavioral score
   signals: string[];

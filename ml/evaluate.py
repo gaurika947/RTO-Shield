@@ -6,7 +6,7 @@ Validates model performance on the held-out test dataset (11,360 orders).
 import os
 import json
 from preprocess import load_dataset
-from train import calculate_metrics
+from train import calculate_metrics, calculate_threshold_analysis
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
@@ -44,6 +44,7 @@ def main():
             X_test_preds.append(binary_pred)
 
     metrics = calculate_metrics(y_test, X_test_preds, X_test_probs)
+    threshold_analysis = calculate_threshold_analysis(y_test, X_test_probs)
 
     print(f"Evaluated on {len(y_test)} test transactions:")
     print(f"  • ROC-AUC:    {metrics['roc_auc']:.4f}")
@@ -52,10 +53,15 @@ def main():
     print(f"  • F1-Score:   {metrics['f1']:.4f}")
     print(f"  • Accuracy:   {metrics['accuracy']:.4f}")
     print(f"  • FPR:        {metrics['fpr']:.4f}")
+    cm = metrics["confusion_matrix"]
+    print(f"  • FNR:        {cm['fn'] / (cm['fn'] + cm['tp']):.4f}" if (cm['fn'] + cm['tp']) else "  • FNR:        n/a")
     print("\nConfusion Matrix:")
     cm = metrics["confusion_matrix"]
     print(f"  TN: {cm['tn']} | FP: {cm['fp']}")
     print(f"  FN: {cm['fn']} | TP: {cm['tp']}")
+    print("\nThreshold analysis:")
+    for row in threshold_analysis:
+        print(f"  {row['threshold']:.2f}: precision={row['precision']:.4f} recall={row['recall']:.4f} f1={row['f1']:.4f} fpr={row['fpr']:.4f} fnr={row['fnr']:.4f}")
     print("=" * 60)
 
 

@@ -1,4 +1,18 @@
-# React + TypeScript + Vite
+# RTO Shield
+
+RTO Shield is an AI-assisted RTO decision layer for simulated merchant transactions.
+
+## Runtime Architecture
+
+`Transaction -> canonical payload -> Python feature normalizer -> Gradient Boosting artifact -> RTO probability -> risk/intervention/checkout/exposure`
+
+The Express API delegates `/api/ml/rto-predict` to `ml/predict.py`. When `ml/models/rto_model.joblib` is present, that service loads the primary artifact. This checkout does not contain the artifact, so the API explicitly returns `modelSource: deterministic_fallback` and the UI labels that path. No fallback probability is presented as a trained-model result.
+
+The evaluation metadata comes from the held-out test set in `ml/data/test.csv`. Run `python ml/evaluate.py` for metrics and threshold analysis. Current evaluation uses synthetic transaction data; production calibration requires representative merchant transaction and RTO outcome data.
+
+Start the app with `npm run dev` and the API with `npm run server`.
+
+## Original Template Notes
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
