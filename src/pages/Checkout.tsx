@@ -143,6 +143,41 @@ export default function Checkout() {
       // 4. Run central Decision Engine for dynamic payment policy
       const evaluatedDecision = makeDecision(evaluatedRisk, settings);
 
+      // 4b. Fetch authoritative HMAC decision token from backend
+      let serverDecisionToken: string | undefined = undefined;
+      try {
+        const evalRes = await fetch('/api/checkout/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: tx.id,
+            order: { order_value: tx.orderAmount, payment_method: tx.paymentMethod },
+            customer: {
+              previous_orders: tx.customer.totalOrders,
+              previous_delivered_orders: tx.customer.successfulDeliveries,
+              previous_rto_orders: tx.customer.rtoOrders,
+              device_linked_accounts: tx.deviceLinkedOrdersCount || 1,
+            },
+            address: tx.address,
+            behavior: {
+              checkout_duration: tx.checkoutDuration || 60,
+              checkout_attempts: tx.checkoutAttempts || 1,
+              address_changes: tx.addressChanges || 0,
+            },
+          }),
+        });
+        if (evalRes.ok) {
+          const evalData = await evalRes.json();
+          serverDecisionToken = evalData.decisionToken;
+          evaluatedDecision.decisionToken = serverDecisionToken;
+          if (evaluatedDecision.canonicalDecision) {
+            evaluatedDecision.canonicalDecision.decisionToken = serverDecisionToken;
+          }
+        }
+      } catch {
+        // Backend offline or local fallback
+      }
+
       const rtoPercent = Math.round((evaluatedRisk.rtoProbability ?? 0.5) * 100);
 
       const newCachedAnalysis: CachedAnalysis = {
@@ -168,6 +203,7 @@ export default function Checkout() {
         paymentPolicy: evaluatedDecision.paymentPolicy,
         modelVersion: evaluatedRisk.mlModelVersion || 'RTO Shield GBDT v1',
         timestamp: Date.now(),
+        decisionToken: serverDecisionToken,
       };
 
       // Set active analysis in central store (Cached!)
@@ -428,6 +464,7 @@ export default function Checkout() {
               />
             ) : (
               <CheckoutPreview
+                orderId={selectedTx.id}
                 orderAmount={selectedTx.orderAmount}
                 productName={selectedTx.productName}
                 decision={store.activeAnalysis.decision}

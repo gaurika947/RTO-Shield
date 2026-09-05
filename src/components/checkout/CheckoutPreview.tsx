@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   CreditCard,
   QrCode,
@@ -14,6 +14,7 @@ import type { PaymentMethod } from '../../types/order';
 import { calculateOrderTotal, validatePaymentAttempt } from '../../engine/paymentPolicy';
 
 interface Props {
+  orderId?: string;
   orderAmount: number;
   productName: string;
   decision: DecisionResult;
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export const CheckoutPreview: React.FC<Props> = ({
+  orderId,
   orderAmount,
   productName,
   decision,
@@ -36,33 +38,34 @@ export const CheckoutPreview: React.FC<Props> = ({
     return 'UPI';
   });
 
+  // Effective payment method gracefully falls back to UPI if COD is not available
+  const effectiveMethod: PaymentMethod = (!policy.codAvailable && selectedMethod === 'COD') ? 'UPI' : selectedMethod;
+
   const [otpValue, setOtpValue] = useState('');
   const [otpVerified, setOtpVerified] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Automatically reset payment method if COD becomes unavailable (HIGH risk)
-  useEffect(() => {
-    if (!policy.codAvailable && selectedMethod === 'COD') {
-      setSelectedMethod('UPI');
-    }
+  const [prevPolicyKey, setPrevPolicyKey] = useState(`${policy.riskLevel}_${policy.codAvailable}`);
+  if (prevPolicyKey !== `${policy.riskLevel}_${policy.codAvailable}`) {
+    setPrevPolicyKey(`${policy.riskLevel}_${policy.codAvailable}`);
     setValidationError(null);
-  }, [policy.codAvailable, policy.riskLevel, selectedMethod]);
+  }
 
   // Dynamic Total Calculation from Central Policy
   const { subtotal, codFee, total: finalTotal } = calculateOrderTotal(
     orderAmount,
-    selectedMethod,
+    effectiveMethod,
     policy
   );
 
-  const needsOTP = selectedMethod === 'COD' && decision.otpRequired && !otpVerified;
+  const needsOTP = effectiveMethod === 'COD' && decision.otpRequired && !otpVerified;
 
   const handlePlaceOrder = async () => {
     setValidationError(null);
 
     // Enforcement: Validate payment attempt against Central Payment Policy
-    const validation = validatePaymentAttempt(policy, selectedMethod, orderAmount);
+    const validation = validatePaymentAttempt(policy, effectiveMethod, orderAmount);
     if (!validation.valid) {
       setValidationError(validation.error || 'Payment method not permitted for this risk tier.');
       return;
@@ -70,13 +73,18 @@ export const CheckoutPreview: React.FC<Props> = ({
 
     setIsProcessing(true);
     try {
+      const idempotencyKey = `IDEMP_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       const response = await fetch('/api/checkout/validate-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
         body: JSON.stringify({
-          riskLevel: policy.riskLevel,
-          paymentMethod: selectedMethod,
+          orderId: orderId || 'ORD_10491',
+          paymentMethod: effectiveMethod,
           orderAmount,
+          decisionToken: decision.decisionToken || decision.canonicalDecision?.decisionToken,
         }),
       });
       const serverValidation = await response.json();
@@ -85,7 +93,7 @@ export const CheckoutPreview: React.FC<Props> = ({
         return;
       }
       setIsProcessing(false);
-      onOrderCompleted(selectedMethod, serverValidation.finalAmount ?? validation.finalAmount);
+      onOrderCompleted(effectiveMethod, serverValidation.finalAmount ?? validation.finalAmount);
     } catch {
       setValidationError('Payment validation is unavailable. Please retry.');
     } finally {
@@ -143,9 +151,9 @@ export const CheckoutPreview: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => setSelectedMethod('UPI')}
-            aria-pressed={selectedMethod === 'UPI'}
+            aria-pressed={effectiveMethod === 'UPI'}
             className={`p-3.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-              selectedMethod === 'UPI'
+              effectiveMethod === 'UPI'
                 ? 'border-blue-500 bg-blue-50 text-slate-900 ring-1 ring-blue-500/30'
                 : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
             }`}
@@ -169,9 +177,9 @@ export const CheckoutPreview: React.FC<Props> = ({
               </div>
             </div>
             <div aria-hidden="true" className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-              selectedMethod === 'UPI' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+              effectiveMethod === 'UPI' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
             }`}>
-              {selectedMethod === 'UPI' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              {effectiveMethod === 'UPI' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
             </div>
           </button>
 
@@ -179,9 +187,9 @@ export const CheckoutPreview: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => setSelectedMethod('CARD')}
-            aria-pressed={selectedMethod === 'CARD'}
+            aria-pressed={effectiveMethod === 'CARD'}
             className={`p-3.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-              selectedMethod === 'CARD'
+              effectiveMethod === 'CARD'
                 ? 'border-blue-500 bg-blue-50 text-slate-900 ring-1 ring-blue-500/30'
                 : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
             }`}
@@ -198,9 +206,9 @@ export const CheckoutPreview: React.FC<Props> = ({
               </div>
             </div>
             <div aria-hidden="true" className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-              selectedMethod === 'CARD' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+              effectiveMethod === 'CARD' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
             }`}>
-              {selectedMethod === 'CARD' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              {effectiveMethod === 'CARD' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
             </div>
           </button>
 
@@ -209,9 +217,9 @@ export const CheckoutPreview: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setSelectedMethod('COD')}
-              aria-pressed={selectedMethod === 'COD'}
+              aria-pressed={effectiveMethod === 'COD'}
               className={`p-3.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                  selectedMethod === 'COD'
+                  effectiveMethod === 'COD'
                   ? 'border-blue-500 bg-blue-50 text-slate-900 ring-1 ring-blue-500/30'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
               }`}
@@ -234,9 +242,9 @@ export const CheckoutPreview: React.FC<Props> = ({
                 </div>
               </div>
               <div aria-hidden="true" className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                selectedMethod === 'COD' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                effectiveMethod === 'COD' ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
               }`}>
-                {selectedMethod === 'COD' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                {effectiveMethod === 'COD' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
               </div>
             </button>
           ) : (
@@ -258,7 +266,7 @@ export const CheckoutPreview: React.FC<Props> = ({
           )}
 
           {/* OTP Verification Prompt if COD with OTP */}
-          {selectedMethod === 'COD' && decision.otpRequired && (
+          {effectiveMethod === 'COD' && decision.otpRequired && (
             <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/80 text-xs text-amber-300 space-y-2 mt-2">
               <div className="flex items-center justify-between">
                 <div className="font-semibold flex items-center gap-1.5">

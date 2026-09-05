@@ -113,6 +113,7 @@ export interface CachedAnalysis {
   modelVersion: string;
   timestamp: number;
   aiExplanation?: string;
+  decisionToken?: string;
 }
 
 // --- Canonical Structured Decision Contract (Phase 2) ---
@@ -135,6 +136,7 @@ export interface CanonicalDecision {
   modelVersion: string;
   featureSchemaVersion: string;
   policyVersion: string;
+  decisionToken?: string;
   recommendedIntervention: {
     action: DecisionAction;
     allowedPaymentMethods: PaymentMethod[];
@@ -157,6 +159,7 @@ export interface DecisionResult {
   policyVersion: string;
   interventionLevel?: string;
   canonicalDecision?: CanonicalDecision;
+  decisionToken?: string;
 }
 
 // --- Audit Record ---

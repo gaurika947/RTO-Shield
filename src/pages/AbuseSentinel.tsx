@@ -127,14 +127,19 @@ export default function AbuseSentinel() {
           <span className="text-xs font-semibold text-blue-600 uppercase tracking-widest block mb-1">
             Abuse Sentinel
           </span>
-          <span className="inline-flex w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-            Simulation mode
-          </span>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              Demo Scenario
+            </span>
+            <span className="inline-flex w-fit rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+              Synthetic Graph Topology
+            </span>
+          </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Detect coordinated transaction abuse across connected accounts.
+            Coordinated abuse detection & graph clustering (Demo scenario)
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Relationship intelligence mapping shared devices, address collisions, and syndicate rings.
+            Relationship intelligence mapping shared devices, address collisions, and syndicate clusters on synthetic graph data.
           </p>
         </div>
       </div>

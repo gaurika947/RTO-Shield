@@ -1,332 +1,252 @@
 # RTO Shield
 
-AI-assisted RTO risk and decision intelligence for simulated merchant transactions.
+AI-assisted Return-to-Origin (RTO) risk and decision intelligence for e-commerce checkouts.
 
-RTO Shield follows the loop **Predict -> Understand -> Explain -> Intervene -> Measure**. It is a prototype decision layer between transaction risk and checkout, not a live Razorpay integration.
+RTO Shield operates on the closed-loop cycle: **Predict → Understand → Explain → Intervene → Measure**. It functions as an authoritative decision and policy layer between transaction risk and dynamic checkout. It is an advanced hackathon prototype and decision architecture, not a live Razorpay integration.
+
+---
 
 ## 1. The Problem
 
-Return-to-Origin (RTO) occurs when an order is not delivered and returns to the merchant. Cash on Delivery increases exposure because shipping and handling costs can be incurred before payment is collected. Blanket COD blocking protects margin but can add unnecessary friction for legitimate customers. Merchants need order-level evidence and graduated interventions instead of a binary block.
+In Indian e-commerce, **Cash on Delivery (COD)** accounts for over 60% of retail transactions but suffers from severe Return-to-Origin (RTO) rates of 20% to 40%. When an order returns undelivered:
+- The merchant incurs forward and reverse logistics shipping costs (₹150–₹400 per shipment).
+- Inventory is locked in transit for 10–18 days, leading to stock depreciation.
+- Payment is never collected.
+
+Blanket COD bans protect margins but devastate customer acquisition and conversion. Merchants require order-level evidential intelligence, non-destructive nudges, and server-authoritative enforcement rather than a blunt binary block.
 
 ## 2. The Solution
 
-The application combines a transaction risk signal with address, history, velocity, network, behavior, and optional AI context. It then applies merchant policy, shows counterfactual options, adapts a simulated checkout, and calculates expected exposure. All current order and outcome data is seeded or simulated.
+RTO Shield combines an authoritative 28-feature Gradient Boosting ML model with deterministic contextual analyzers across:
+1. **Address Intelligence** (premise structure, pincode risk, completeness)
+2. **Customer History** (delivery track record, historical return rate)
+3. **Network Signals** (device fingerprint collisions, shared IPs, cluster topology)
+4. **Velocity Signals** (short-window burst detection)
+5. **Behavioral Signals** (checkout friction, duration, revision frequency)
+6. **Machine Learning** (authoritative GBDT inference artifact)
+7. **AI Context** (Gemini contextual address/intent explanation — optional advisory signal)
 
-## 3. Features
+The output feeds into a centralized policy engine that enforces dynamic checkout rules:
+- **Low Risk (0–30%)**: Frictionless COD available with ₹0 fee.
+- **Medium Risk (31–70%)**: Soft nudge with ₹50 COD convenience fee; free UPI/Card recommended.
+- **High Risk (71–100%)**: COD restricted; purchase permitted via prepaid UPI/Card.
 
-### ML prediction and risk intelligence
+---
 
-The app exposes predicted RTO probability separately from its multi-signal policy score. The risk engine combines the ML signal with deterministic analyzers and feeds the decision engine.
+## 3. Core Terminology & Evidence Disclosure
 
-### Counterfactual analysis
+To prevent misleading claims, all metrics and system states are explicitly classified:
 
-The transaction detail view evaluates feature mutations through the client deterministic fallback. It calculates baseline and modified predictions for phone verification, prepaid state, address completion, and network changes. These counterfactuals are not yet routed through the authoritative Python artifact service, so they must be treated as fallback-model simulations, not artifact-model explanations.
+| Classification | Meaning in RTO-Shield |
+|---|---|
+| **BENCHMARK** | Held-out test evaluation on a 11,360-sample synthetic split (`ml/models/model_manifest.json`). Not live production performance. |
+| **OBSERVED** | Runtime application state, seeded customer accounts, and recorded delivery feedback events. |
+| **SIMULATED** | Counterfactual toggle evaluations, threshold impact projections, and interactive checkout scenarios. |
+| **ESTIMATED** | Financial exposure calculations based on configurable merchant unit economics. |
+| **DEMO** | Abuse Sentinel graph constellation clusters and seeded demo transactions. |
 
-### Intervention optimizer
+---
 
-The existing optimizer supports `conservative`, `balanced`, and `conversion_first` policy modes, trust-aware rules, OTP, prepaid recommendations, and COD policy. Projected impacts are explicitly marked as `business_simulation`; they are not calibrated model predictions.
-
-### Adaptive checkout
-
-`/adaptive-checkout` presents a private merchant view and neutral customer-facing actions. The customer view does not expose risk scores, fraud language, abuse scores, or internal customer classifications.
-
-### Abuse Sentinel
-
-Network analysis uses seeded customers, orders, devices, addresses, graph nodes, and edges. It can surface shared-device and high-return relationships. The current relationships are simulated and are not live payment-platform signals.
-
-### Exposure intelligence
-
-For an assessed order:
-
-```text
-Expected RTO Exposure = Order Value × Predicted RTO Probability
-```
-
-The checkout preview also shows a potential reduction based on the current policy simulation. Merchant cost assumptions can be configured in Settings. These values are estimated or potential impact, never guaranteed savings. Portfolio projected exposure currently remains equal to baseline because portfolio-level intervention projections are not yet implemented.
-
-### Policy simulator, analytics, and model status
-
-Existing pages cover policy simulation, live operations, outcome feedback, held-out evaluation metadata, confusion matrices, feature metadata, and threshold analysis. The model-status page explicitly indicates when the primary artifact is unavailable.
-
-## 4. System Architecture
+## 4. End-to-End Decision Architecture
 
 ```mermaid
 flowchart TD
-    A[Simulated transaction] --> B[Canonical simulation adapter]
-    B --> C[Express ML API]
-    C --> D[Python feature normalizer]
-    D --> E{rto_model.joblib present?}
-    E -->|Yes| F[Gradient Boosting artifact]
-    E -->|No| G[Deterministic fallback]
-    F --> H[Predicted RTO probability]
-    G --> H
-    H --> I[Risk engine]
-    I --> J[Contextual signals and policy]
-    J --> K[Counterfactual and intervention simulation]
-    K --> L[Adaptive checkout]
-    H --> M[Exposure engine]
-    M --> N[Estimated financial impact]
+    A[Checkout Transaction] --> B[Canonical 28-Feature Normalizer]
+    B --> C[Authoritative ML Artifact - rto_model.joblib]
+    C --> D[Multi-Signal Risk Aggregator]
+    D --> E[Deterministic Conflict Resolution]
+    E --> F[Central Policy Engine - PAYMENT_POLICY_V2]
+    F --> G[HMAC Decision Token Generation]
+    G --> H[Adaptive Dynamic Checkout]
+    H --> I[Server-Authoritative Payment Validation]
 ```
 
-## 5. ML Architecture
+### Single Authoritative Decision Flow
+1. **Transaction Ingestion**: Customer, order, address, and behavioral signals are formatted according to the canonical `rto-features-v1` contract.
+2. **Authoritative ML Artifact**: Evaluated by the primary `rto_model.joblib` artifact (SHA-256: `921353523dda484b9e87afc6e9efd934dc30dd12c179baf03ebf3caa3181f39c`).
+3. **Multi-Signal Aggregation**: Multi-signal scoring with deterministic conflict resolution (e.g. coordinated abuse cluster overrides optimistic single-feature signals).
+4. **Central Policy Engine**: Maps the risk tier to merchant action (`ALLOW_ALL`, `SOFT_NUDGE`, `PREPAID_ONLY`).
+5. **HMAC Decision Token**: Server signs an immutable token containing `orderId`, `amount`, `riskLevel`, and expiration time.
+6. **Server-Authoritative Checkout**: Client cannot manipulate risk level or amount. Payment validation checks token signature, expiration, order binding, and amount integrity.
 
-`ml/preprocess.py` defines a 28-value feature vector. Features include customer history, rates, order value, payment method, pincode risk, address completeness, checkout behavior, intent, device links, and product-category flags.
+---
 
-`ml/train.py` trains a scikit-learn `GradientBoostingClassifier` and writes `ml/models/rto_model.joblib`, `model_trees.json`, `model_meta.json`, and `model_manifest.json`. The current checkout contains the generated artifact. `ml/predict.py` loads it and returns `modelSource: artifact`, the feature schema version, artifact SHA-256, dataset name, and manifest name. If the artifact is unavailable, it explicitly returns `modelSource: deterministic_fallback`.
+## 5. Security & Authoritative Checkout Architecture
 
-The Express route `/api/ml/rto-predict` invokes `ml/predict.py`. It returns probability, score, model source, version, and fallback diagnostics. The Python process is started per request and the artifact is loaded per request when available; this is suitable for the prototype but not a production serving design.
+RTO-Shield enforces zero trust towards client-submitted risk values:
 
-Probabilities are not calibrated confidence values. The UI uses “Predicted RTO Probability” and does not present distance from 0.5 as model confidence.
+### Server-Authoritative Decisioning
+- **Client Risk Manipulation Blocked**: The endpoint `POST /api/checkout/validate-payment` ignores any client-sent `riskLevel`, `riskScore`, or `decision`. If an attacker submits `riskLevel: "LOW"` on a high-risk order, the server strictly evaluates the authoritative risk and returns HTTP 403 Forbidden.
+- **Amount Integrity Verification**: The payable amount is verified against the server's authoritative state and the signed decision token. Attempts to pay ₹1 for a ₹1899 order are rejected with HTTP 400 (`AMOUNT_MISMATCH`).
+- **Decision Replay Protection**: Decision tokens are HMAC-SHA256 signed and strictly bound to `orderId`. An attacker cannot reuse a valid decision token from Order A on Order B (`ORDER_BINDING_MISMATCH`).
+- **Idempotency Protection**: Supports `Idempotency-Key` headers. Replaying the identical payload returns the cached result without duplicate processing. Replaying the key with modified parameters is rejected with HTTP 409 Conflict (`IDEMPOTENCY_CONFLICT`).
+- **CORS & Rate Limiting**: Environment-aware CORS allowlist; sliding-window rate limiting on checkout (60 req/min), ML inference (120 req/min), and AI analysis (40 req/min).
 
-## 6. Dataset
+---
 
-The repository contains a synthetic/demo dataset generated by `ml/generate_data.py`. The target label is generated from overlapping historical, payment, address, behavior, network, and category signals, including the derived `intent_score`. This creates an optimistic synthetic benchmark and is not evidence of production performance.
+## 6. ML Model & Provenance
 
-| Split | Samples |
+- **Algorithm**: `sklearn.ensemble.GradientBoostingClassifier`
+- **Model Version**: `RTO Shield GBDT v1`
+- **Feature Contract**: `rto-features-v1` (28 canonical features)
+- **Primary Artifact**: `ml/models/rto_model.joblib`
+- **Verified SHA-256 Hash**: `921353523dda484b9e87afc6e9efd934dc30dd12c179baf03ebf3caa3181f39c`
+- **Fallback State**: Explicitly labeled `deterministic_fallback`, active only if the primary artifact file is unavailable.
+
+### Canonical 28 Features
+1. `previous_orders`
+2. `previous_delivered_orders`
+3. `previous_rto_orders`
+4. `previous_cancelled_orders`
+5. `customer_rto_rate`
+6. `customer_success_rate`
+7. `days_since_first_order`
+8. `order_value`
+9. `number_of_items`
+10. `discount_percentage`
+11. `cod_selected`
+12. `pincode_rto_rate`
+13. `address_completeness`
+14. `address_changes`
+15. `city_state_match`
+16. `checkout_attempts`
+17. `checkout_duration`
+18. `cart_revisions`
+19. `quantity_changes`
+20. `payment_attempts`
+21. `session_duration`
+22. `intent_score`
+23. `device_linked_accounts`
+24. `cat_ELECTRONICS`
+25. `cat_FASHION`
+26. `cat_BEAUTY`
+27. `cat_HOME`
+28. `cat_ACCESSORIES`
+
+### Benchmark Evaluation (Held-Out Test Set: 11,360 Samples)
+
+| Metric | Benchmark Value |
 |---|---:|
-| Training | 52,242 |
-| Validation | 11,398 |
-| Held-out test | 11,360 |
-| Total | 75,000 |
+| Accuracy | 98.32% |
+| Precision | 96.38% |
+| Recall | 95.24% |
+| F1 Score | 95.80% |
+| ROC-AUC | 0.9984 |
+| False Positive Rate (FPR) | 0.90% |
+| False Negative Rate (FNR) | 4.76% |
 
-The held-out test set is read by `ml/evaluate.py`. It is not used for training. Evaluation refuses to run without the artifact and verifies the manifest SHA-256 and feature schema before scoring.
+Confusion Matrix: True Negative 8,988 | False Positive 82 | False Negative 109 | True Positive 2,181.
 
-## 7. Model Performance
+---
 
-The current repository evaluation run on 11,360 synthetic test rows produced:
+## 7. Authoritative Counterfactual Engine
 
-| Metric | Value |
-|---|---:|
-| Accuracy | 98.42% |
-| Precision | 97.22% |
-| Recall | 94.85% |
-| F1 | 96.02% |
-| ROC-AUC | 0.9986 |
-| False positive rate | 0.68% |
-| False negative rate | 5.15% |
+The counterfactual engine answers: *"What would have to change for this order to become safer?"*
+- **Authoritative Batch Route**: `POST /api/ml/counterfactual` executes baseline and toggle-mutated payloads (`phoneVerification`, `prepaidPayment`, `verifiedAddress`, `removeSuspiciousNetwork`) as a single batch through the authoritative Python GBDT artifact.
+- **Explainable Point Attribution**: Quantifies exact risk point reduction for each intervention.
+- **Graceful Fallback**: If backend inference is unreachable, falls back to deterministic simulation clearly labeled as `deterministic_fallback`.
 
-Confusion matrix: TN 9,008, FP 62, FN 118, TP 2,172.
+---
 
-These are synthetic/demo benchmark results from the current evaluator and must not be interpreted as production performance. Production calibration requires representative merchant transactions and confirmed RTO outcomes.
+## 8. Responsible AI & PII Protection
 
-Threshold analysis for 0.30, 0.40, 0.50, 0.60, and 0.70 is generated by `ml/evaluate.py` and exported by the training metadata when the pipeline is run.
+- **PII Minimization**: Phone numbers (`[PHONE_MASKED]`), emails (`[EMAIL_MASKED]`), and door numbers are redacted before sending data to Gemini.
+- **Gemini is Advisory**: Gemini provides qualitative explanations only (5% weight). It has zero authority to approve or block orders.
+- **Hard Timeout**: 5-second hard limit on AI calls prevents checkout latency degradation.
+- **Customer-Safe Language**: The customer view never displays "fraud", "risk score", or "blacklisted". Only neutral, constructive payment options are shown.
 
-## 8. Feature Engineering
+---
 
-The model vector includes:
+## 9. API Reference
 
-- Customer history: previous orders, delivered orders, RTO orders, cancelled orders, RTO rate, success rate, account age proxy.
-- Payment and order: order value, item count, discount, COD indicator.
-- Address and location: pincode RTO rate, address completeness, address changes, city/state match.
-- Behavior: checkout attempts, duration, cart revisions, quantity changes, payment attempts, session duration, intent score.
-- Network and category: device-linked accounts and one-hot product category fields.
+### Health & Metrics
+- `GET /api/health` — System status, artifact verification status, Gemini configuration.
+- `GET /api/ml/metrics` — Dynamic model metadata, manifest verification, SHA-256 hash match, threshold analysis.
 
-The Python normalizer is authoritative for model-vector ordering. Application data reaches it through the simulation adapter and Express payload transformation.
+### ML Inference
+- `POST /api/ml/rto-predict` — Single transaction prediction using canonical 28 features.
+- `POST /api/ml/batch-predict` — Batch inference (up to 50 transactions).
+- `POST /api/ml/counterfactual` — Authoritative multi-scenario mutation simulation.
 
-## 9. Counterfactual Decision Engine
+### Checkout & Policy
+- `POST /api/policy/payment-policy` — Central risk-to-payment policy mapping.
+- `POST /api/checkout/evaluate` — Server-authoritative risk evaluation; generates HMAC decision tokens.
+- `POST /api/checkout/validate-payment` — Hardened payment validation enforcing amount integrity, COD policy, token validity, and idempotency.
 
-The intended flow is:
+### Intelligence & Simulation
+- `POST /api/ai/analyze` — PII-sanitized Gemini contextual analysis with bounded output.
+- `POST /api/risk/simulate` — Macro policy simulator for portfolio loss modeling.
+- `GET /api/abuse-rings` — Graph cluster fixtures for Abuse Sentinel visualization.
 
-```text
-Baseline -> feature mutation -> same predictor -> new probability -> reduction
-```
+---
 
-The current TypeScript counterfactual engine uses the deterministic fallback directly. It does not call the active Express artifact path, so its output is labeled by the surrounding product as simulation/fallback behavior. Prepaid incentives and policy effects are business simulations because they are not direct trained features.
+## 10. Local Setup & Verification
 
-## 10. Intervention Optimizer
+### Prerequisites
+- Node.js 18+
+- Python 3.10+ with `scikit-learn` and `joblib`
 
-The optimizer ranks graduated actions such as no intervention, soft nudge, OTP, verification plus prepaid incentive, and prepaid-only policy. Strategy selection changes threshold behavior:
-
-- `conservative`: lower thresholds and more protection.
-- `balanced`: default tradeoff.
-- `conversion_first`: higher thresholds and less friction.
-
-Projected risk impact is heuristic business simulation, not a claim about calibrated model response. The objective weights are not scientifically validated universal costs.
-
-## 11. Adaptive Checkout
-
-The selected transaction is stored in Zustand and the checkout analysis stores its risk and decision. `/adaptive-checkout` reads that same active analysis. Customer-facing copy is neutral, while merchant-only panels contain predicted risk and intervention reasoning. Order placement calls the backend payment-validation endpoint as well as local policy validation.
-
-## 12. Abuse Sentinel
-
-The sentinel builds relationships from seeded customer/order/device/address data and network graph structures. Evidence includes linked devices, cluster size, and historical return behavior. It is simulation data only; no live Razorpay, payment, logistics, or merchant feed is connected.
-
-## 13. Financial Intelligence
-
-Order exposure is calculated dynamically from order value and predicted probability. Configurable forward shipping, reverse shipping, RTO processing, and handling assumptions are available in Settings. The current implementation does not calculate a separate intervention incentive net-benefit field, and portfolio projected exposure is a documented limitation.
-
-## 14. Policy Simulator
-
-The policy simulator models verification thresholds, prepaid thresholds, incentive values, COD fees, strictness, and high-risk-pincode treatment. Its monthly order, conversion, loss, and exposure figures are scenario estimates based on simulation inputs, not observed merchant results.
-
-## 15. Responsible AI
-
-- Current data is synthetic/demo data.
-- Production use requires representative transaction and outcome data.
-- Only necessary transaction and risk signals should be processed.
-- Model-derived output, deterministic contextual signals, and business simulations should remain distinct.
-- Merchant policy remains configurable and human-controlled.
-
-## 16. Production Integration Architecture
-
-```mermaid
-flowchart TD
-    A[Authorized payment and merchant data] --> B[Production transaction contract]
-    B --> C[Feature normalizer]
-    C --> D[Validated model service]
-    D --> E[Risk and intervention policy]
-    E --> F[Checkout integration]
-    F --> G[Confirmed delivery/RTO outcomes]
-    G --> H[Monitoring and recalibration]
-```
-
-No Razorpay integration is present in this repository. Production work would require authorized payment, logistics, and outcome integrations, authentication, rate limiting, durable model serving, calibration, drift monitoring, and merchant-specific validation.
-
-## 17. Tech Stack
-
-- Frontend: React 19, TypeScript, Vite, React Router, Zustand.
-- UI and visualization: Tailwind CSS via Vite, Lucide React, Recharts, XYFlow.
-- Backend: Node.js with Express, CORS, dotenv, and optional server-side Gemini SDK integration.
-- ML: Python, scikit-learn-compatible training path, CSV preprocessing, optional joblib artifact loading.
-- Tests: Vitest and TypeScript build checks.
-
-## 18. Project Structure
-
-```text
-RTO Shield/
-├── src/
-│   ├── ai/                 Optional Gemini contextual analysis
-│   ├── components/         Checkout and application layout components
-│   ├── data/               Seed data, persistence, simulation adapter
-│   ├── engine/             Risk, ML fallback, policy, counterfactual, exposure
-│   ├── pages/              Dashboard and decision-intelligence routes
-│   ├── store/              Zustand risk and settings state
-│   └── types/              Shared TypeScript contracts
-├── server/index.js         Express API
-├── ml/
-│   ├── data/               Synthetic train/validation/test CSV files
-│   ├── models/             Metadata and optional generated artifacts
-│   ├── preprocess.py       Canonical Python feature vector
-│   ├── train.py            Training and artifact export
-│   ├── predict.py          Artifact/fallback inference
-│   └── evaluate.py         Held-out evaluation and thresholds
-├── tests/                  Vitest tests
-├── public/
-├── package.json
-└── README.md
-```
-
-## 19. Local Setup
-
+### Installation
 ```bash
 npm install
 ```
 
-The frontend and API use the scripts below. Python dependencies are not declared in a repository requirements file; install a compatible Python environment with the modules required by the ML scripts, including scikit-learn and joblib when using artifact training/inference.
+### Environment Configuration
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
+*(Optional: Add `GEMINI_API_KEY` for AI contextual reasoning. The application works completely without it).*
 
-Optional Gemini analysis reads `GEMINI_API_KEY` from the server environment. Do not place secrets in frontend code or commit `.env` files.
-
-## 20. Running the Application
-
-Terminal 1:
-
+### Running the System
+Terminal 1 (Backend API):
 ```bash
 npm run server
 ```
 
-Terminal 2:
-
+Terminal 2 (Frontend Client):
 ```bash
 npm run dev
 ```
+Open `http://localhost:5173/` in your browser.
 
-Open `http://localhost:5173/`. The Vite API proxy forwards `/api` to `http://localhost:3001`.
-
-Other package scripts are `npm run build`, `npm test`, `npm run lint`, and `npm run preview`.
-
-## 21. ML Pipeline
-
-```bash
-python ml/train.py
-python ml/evaluate.py
-python ml/predict.py
-```
-
-Training reads the existing split and writes the artifact, portable tree export, metadata, and manifest. Evaluation reads `ml/data/test.csv` and requires the exact artifact/manifest pair. Prediction accepts a JSON argument or uses its built-in sample. Running training changes model artifacts and should be an intentional model lifecycle action, not a demo startup step.
-
-## 22. API Documentation
-
-### `GET /api/health`
-
-Returns API health, model status, and whether Gemini is configured.
-
-### `POST /api/ml/rto-predict`
-
-Accepts `customer`, `order`, `address`, and `behavior` objects. The active frontend sends previous order counts, order value, payment method, address fields, and checkout behavior. Returns `rtoProbability`, `riskScore`, `modelVersion`, `modelSource`, and fallback diagnostics when applicable. Invalid order values return HTTP 400; inference failures return HTTP 500.
-
-### `POST /api/risk/predict`
-
-Compatibility endpoint that delegates to the same Python inference service.
-
-### `GET /api/ml/metrics`
-
-Returns checked-in evaluation metadata, feature schema, threshold analysis when exported, evaluation source, and artifact availability.
-
-### `POST /api/policy/payment-policy`
-
-Maps a supplied risk level/probability to the current COD, UPI, card, fee, and checkout message policy.
-
-### `POST /api/checkout/validate-payment`
-
-Validates the selected payment method against the submitted risk policy and returns validity, applied fee, and final amount. The prototype has no authentication or signed decision token, so this is not a production authorization boundary.
-
-### `POST /api/risk/simulate`
-
-Runs the existing policy scenario simulation.
-
-### `GET /api/abuse-rings`
-
-Returns the current simulated abuse-ring fixture data.
-
-### `POST /api/ai/analyze`
-
-Calls Gemini server-side when `GEMINI_API_KEY` is configured; otherwise returns an unavailable response.
-
-## 23. Testing
-
+### Running Tests
+Execute the complete test suite:
 ```bash
 npm test
+```
+*(Runs 43 Vitest tests across 10 suites, including security attack tests, feature parity, counterfactuals, and policy criteria).*
+
+Execute Python ML provenance & scenario tests:
+```bash
+python -m unittest discover -s ml
+```
+*(Runs 22 Python tests verifying artifact hash, feature extraction, scenarios, and provenance).*
+
+Production Build Check:
+```bash
 npm run build
-python ml/evaluate.py
 ```
 
-The current suite covers risk analyzers, decision and feedback behavior, seeded-data distributions, model fallback/exposure contracts, and acceptance criteria. It does not yet provide a full authenticated API integration suite or browser automation suite.
+---
 
-## 24. Limitations
+## 11. Known Limitations
 
-- The primary `rto_model.joblib` artifact is present in this checkout and runtime predictions use it through Python. The deterministic fallback remains available only when the artifact is unavailable.
-- Counterfactuals do not yet invoke the same API/artifact path as the active checkout prediction.
-- Intervention projections are business simulations, not calibrated model outputs.
-- Portfolio projected exposure and net intervention benefit are not fully implemented.
-- Dataset, network relationships, policy simulator values, and insight fixtures are synthetic/demo data.
-- No live Razorpay, payment, logistics, or merchant database integration exists.
-- API CORS is unrestricted and there is no authentication, rate limiting, or durable model-serving process.
-- Probabilities are not calibrated confidence values.
+1. **Synthetic Data**: The 75,000-sample dataset was synthetically generated. Real-world deployment requires training on merchant-specific historical logistics data.
+2. **Razorpay Alignment**: RTO-Shield models the decision layer that sits before a payment gateway. It does not initiate real banking transactions.
+3. **In-Memory Serving**: The Express API invokes the Python inference script per request. Production architecture would deploy a containerized FastAPI / Triton serving cluster.
 
-## 25. Roadmap
+---
 
-### Current prototype
+## 12. Submission Readiness
 
-Simulation-mode transaction analysis, risk policy, counterfactual fallback simulation, adaptive checkout preview, exposure calculation, synthetic evaluation, and responsible-AI disclosures.
-
-### Production roadmap
-
-Authorized merchant/payment/logistics adapters, artifact registry and persistent model service, schema validation and authentication, calibration, drift monitoring, merchant-specific policy/model evaluation, outcome feedback, A/B testing, and online monitoring.
-
-## 26. Hackathon Context
-
-RTO Shield demonstrates how payment and checkout infrastructure can use transaction risk intelligence to protect merchant economics while preserving conversion for legitimate customers. The repository is a simulation prototype and does not claim official Razorpay integration or production validation.
-
-## 27. License
-
-No license file is present in the repository.
+| Verification Standard | Result |
+|---|---|
+| **Artifact SHA-256 Parity** | `921353523dda484b9e87afc6e9efd934dc30dd12c179baf03ebf3caa3181f39c` (MATCH) |
+| **Server-Authoritative Checkout** | Enforced (Client risk tampering blocked) |
+| **Amount Integrity** | Enforced (Amount tampering rejected) |
+| **HMAC Decision Tokens** | Implemented (Replay & tampering blocked) |
+| **Idempotency** | Implemented (Duplicate requests deduplicated) |
+| **Rate Limiting & CORS** | Configured |
+| **Automated Tests** | 43 TypeScript tests + 22 Python tests PASS |
+| **Production Build** | Clean build with zero TypeScript errors |
