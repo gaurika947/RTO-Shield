@@ -21,7 +21,6 @@ export function simulateCounterfactualRisk(
   deviceId: string,
   toggles: CounterfactualToggleState
 ): CounterfactualResult {
-  // 1. Compute baseline (current) prediction
   const baselineContext: RawOrderContext = {
     customer,
     address,
@@ -31,77 +30,52 @@ export function simulateCounterfactualRisk(
   };
   const baseline = predictRTO(baselineContext);
 
-  // 2. Build counterfactual modified context
-  const modifiedCustomer: Customer = { ...customer };
-  const modifiedAddress: OrderAddress = { ...address };
-  let modifiedPayment: PaymentMethod = paymentMethod;
-  let modifiedDeviceLinkedAccounts = customer.knownDevices?.length || 1;
+  const buildContext = (active: CounterfactualToggleState): RawOrderContext => {
+    const modifiedCustomer: Customer = { ...customer };
+    const modifiedAddress: OrderAddress = { ...address };
+    let modifiedPayment: PaymentMethod = paymentMethod;
+    let modifiedDeviceLinkedAccounts = customer.knownDevices?.length || 1;
 
-  if (toggles.prepaidPayment) {
-    modifiedPayment = 'UPI';
-  }
-
-  if (toggles.verifiedAddress) {
-    if (!modifiedAddress.landmark) {
-      modifiedAddress.landmark = 'Verified Landmark Nearby';
+    if (active.prepaidPayment) modifiedPayment = 'UPI';
+    if (active.verifiedAddress) {
+      if (!modifiedAddress.landmark) modifiedAddress.landmark = 'Verified Landmark Nearby';
+      if (modifiedAddress.line1.length < 25) modifiedAddress.line1 = `${modifiedAddress.line1}, Sector 14, Main Road`;
     }
-    if (modifiedAddress.line1.length < 25) {
-      modifiedAddress.line1 = `${modifiedAddress.line1}, Sector 14, Main Road`;
+    if (active.removeSuspiciousNetwork) {
+      modifiedDeviceLinkedAccounts = 1;
+      modifiedCustomer.knownDevices = [deviceId];
     }
-  }
 
-  if (toggles.removeSuspiciousNetwork) {
-    modifiedDeviceLinkedAccounts = 1;
-    modifiedCustomer.knownDevices = [deviceId];
-  }
-
-  let counterfactualDuration = 85;
-  let counterfactualAttempts = 1;
-  let counterfactualAddressChanges = 0;
-
-  if (toggles.phoneVerification) {
-    // Phone verification establishes real-time mobile intent
-    counterfactualDuration = 110;
-    counterfactualAttempts = 1;
-  }
-
-  const simulatedContext: RawOrderContext = {
-    customer: modifiedCustomer,
-    address: modifiedAddress,
-    orderAmount,
-    paymentMethod: modifiedPayment,
-    deviceId,
-    checkoutDuration: counterfactualDuration,
-    checkoutAttempts: counterfactualAttempts,
-    addressChanges: counterfactualAddressChanges,
-    deviceLinkedAccounts: modifiedDeviceLinkedAccounts,
+    return {
+      customer: modifiedCustomer,
+      address: modifiedAddress,
+      orderAmount,
+      paymentMethod: modifiedPayment,
+      deviceId,
+      checkoutDuration: active.phoneVerification ? 110 : undefined,
+      checkoutAttempts: active.phoneVerification ? 1 : undefined,
+      addressChanges: active.verifiedAddress ? 0 : undefined,
+      deviceLinkedAccounts: modifiedDeviceLinkedAccounts,
+    };
   };
 
-  const projected = predictRTO(simulatedContext);
-
-  // Calculate detailed deltas for individual toggles
-  const detailedDeltas: Array<{ factor: string; deltaPoints: number; active: boolean }> = [
-    {
-      factor: 'Phone OTP Verification',
-      deltaPoints: toggles.phoneVerification ? Math.max(8, Math.round(baseline.riskScore * 0.18)) : 0,
-      active: toggles.phoneVerification,
-    },
-    {
-      factor: 'Switch to Prepaid (UPI/Card)',
-      deltaPoints: toggles.prepaidPayment ? Math.max(18, Math.round(baseline.riskScore * 0.42)) : 0,
-      active: toggles.prepaidPayment,
-    },
-    {
-      factor: 'Complete Landmark & Verified Address',
-      deltaPoints: toggles.verifiedAddress ? 12 : 0,
-      active: toggles.verifiedAddress,
-    },
-    {
-      factor: 'Disassociate Multi-Account Cluster',
-      deltaPoints: toggles.removeSuspiciousNetwork ? (baseline.ringRisk?.ringDetected ? 24 : 8) : 0,
-      active: toggles.removeSuspiciousNetwork,
-    },
+  const projected = predictRTO(buildContext(toggles));
+  const individualDeltas: Array<{ factor: string; key: keyof CounterfactualToggleState }> = [
+    { factor: 'Phone OTP Verification', key: 'phoneVerification' },
+    { factor: 'Switch to Prepaid (UPI/Card)', key: 'prepaidPayment' },
+    { factor: 'Complete Landmark & Verified Address', key: 'verifiedAddress' },
+    { factor: 'Disassociate Multi-Account Cluster', key: 'removeSuspiciousNetwork' },
   ];
+  const detailedDeltas = individualDeltas.map(({ factor, key }) => {
+    const oneToggle = { phoneVerification: false, prepaidPayment: false, verifiedAddress: false, removeSuspiciousNetwork: false };
+    oneToggle[key] = true;
+    const oneTogglePrediction = predictRTO(buildContext(oneToggle));
+    return {
+      factor,
+      deltaPoints: Math.max(0, baseline.riskScore - oneTogglePrediction.riskScore),
+      active: toggles[key],
+    };
+  });
 
   const pointsReduction = Math.max(0, baseline.riskScore - projected.riskScore);
 

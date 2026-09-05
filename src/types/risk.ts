@@ -211,4 +211,8 @@ export interface MerchantSettings {
   policyCounter: number;      // increments on any policy change
   aiEnabled: boolean;         // true = live Gemini, false = simulate unavailable
   interventionStrategy?: InterventionStrategy; // 'conversion_first' | 'balanced' | 'conservative'
+  averageForwardShippingCost?: number;
+  averageReverseShippingCost?: number;
+  averageRtoProcessingCost?: number;
+  averageHandlingCost?: number;
 }

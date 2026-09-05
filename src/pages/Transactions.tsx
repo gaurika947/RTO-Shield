@@ -513,18 +513,18 @@ export default function Transactions() {
                     {/* Interactive Toggles */}
                     <div className="space-y-2">
                       {[
-                        { key: 'phoneVerification', label: 'Verify Phone OTP', pts: '↓ 12 pts' },
-                        { key: 'prepaidPayment', label: 'Switch to Prepaid (UPI / Card)', pts: '↓ 35 pts' },
-                        { key: 'verifiedAddress', label: 'Verified Complete Address & Landmark', pts: '↓ 12 pts' },
-                        { key: 'removeSuspiciousNetwork', label: 'Disassociate Multi-Account Cluster', pts: '↓ 24 pts' },
-                      ].map((item) => (
+                        { key: 'phoneVerification', label: 'Verify Phone OTP' },
+                        { key: 'prepaidPayment', label: 'Switch to Prepaid (UPI / Card)' },
+                        { key: 'verifiedAddress', label: 'Verified Complete Address & Landmark' },
+                        { key: 'removeSuspiciousNetwork', label: 'Disassociate Multi-Account Cluster' },
+                      ].map((item, index) => (
                         <label
                           key={item.key}
                           className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer"
                         >
                           <span className="font-medium text-slate-800">{item.label}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-emerald-600 font-bold font-mono">{item.pts}</span>
+                            <span className="text-[10px] text-emerald-600 font-bold font-mono">↓ {counterfactualResult?.detailedDeltas[index]?.deltaPoints ?? 0} pts</span>
                             <input
                               type="checkbox"
                               checked={(cfToggles as any)[item.key]}

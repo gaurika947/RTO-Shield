@@ -204,6 +204,21 @@ export default function Settings() {
         </div>
       </div>
 
+      <div className="card p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Exposure assumptions</h3>
+          <p className="mt-1 text-[11px] text-slate-500">Used only for estimated merchant cost calculations. Zero means no assumption configured.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+          {([
+            ['averageForwardShippingCost', 'Average forward shipping cost'],
+            ['averageReverseShippingCost', 'Average reverse shipping cost'],
+            ['averageRtoProcessingCost', 'Average RTO processing cost'],
+            ['averageHandlingCost', 'Average handling cost'],
+          ] as const).map(([key, label]) => <label key={key} className="font-bold text-slate-700">{label} (₹)<input type="number" min={0} value={settings[key] ?? 0} onChange={(event) => settings.updateSettings({ [key]: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" /></label>)}
+        </div>
+      </div>
+
       {/* Secondary Resources Links */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div

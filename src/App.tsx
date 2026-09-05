@@ -21,6 +21,8 @@ import Customers from './pages/Customers';
 import Architecture from './pages/Architecture';
 import ResponsibleAI from './pages/ResponsibleAI';
 import Feedback from './pages/Feedback';
+import ModelStatus from './pages/ModelStatus';
+import AdaptiveCheckout from './pages/AdaptiveCheckout';
 
 export default function App() {
   const loadStore = useRiskStore((s) => s.loadFromStorage);
@@ -38,6 +40,7 @@ export default function App() {
         {/* Primary Pages */}
         <Route path="/overview" element={<Overview />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/adaptive-checkout" element={<AdaptiveCheckout />} />
         <Route path="/live-risk" element={<LiveRisk />} />
         <Route path="/network" element={<NetworkSentinel />} />
         <Route path="/velocity" element={<VelocityMonitor />} />
@@ -52,6 +55,7 @@ export default function App() {
         <Route path="/architecture" element={<Architecture />} />
         <Route path="/responsible-ai" element={<ResponsibleAI />} />
         <Route path="/feedback" element={<Feedback />} />
+        <Route path="/model-status" element={<ModelStatus />} />
 
         {/* Backward Compatibility Redirects */}
         <Route path="/risk-intelligence" element={<Navigate to="/live-risk" replace />} />

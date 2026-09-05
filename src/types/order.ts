@@ -20,6 +20,7 @@ export interface Order {
   ipSubnet: string;            // ip_subnet_xxxx
   timestamp: number;
   riskScore?: number;
+  rtoProbability?: number;
   riskTier?: RiskTier;
   decision?: DecisionAction;
   evaluationId?: string;

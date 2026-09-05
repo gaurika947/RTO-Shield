@@ -7,6 +7,7 @@ import { makeDecision } from '../engine/decisionEngine';
 import { runMLInference } from '../engine/mlService';
 import { callGeminiAnalysis } from '../ai/geminiAnalyzer';
 import { DEMO_TRANSACTIONS, type DemoTransaction } from '../data/demoTransactions';
+import { normalizeSimulationTransaction } from '../data/simulationAdapter';
 import type { AuditRecord, CachedAnalysis } from '../types/risk';
 import type { Order, PaymentMethod, OrderOutcome as OutcomeType } from '../types/order';
 
@@ -84,17 +85,18 @@ export default function Checkout() {
 
     try {
       // 1. Kick off ML Inference (Singleton / Cached In-Memory Model)
+      const normalizedInput = normalizeSimulationTransaction(tx);
       const mlPromise = runMLInference(
-        tx.customer,
-        tx.address,
-        tx.orderAmount,
-        tx.paymentMethod,
-        tx.deviceId,
+        normalizedInput.customer,
+        normalizedInput.address,
+        normalizedInput.orderAmount,
+        normalizedInput.paymentMethod,
+        normalizedInput.deviceId,
         {
-          checkoutDuration: tx.checkoutDuration,
-          checkoutAttempts: tx.checkoutAttempts,
-          addressChanges: tx.addressChanges,
-          deviceLinkedAccounts: tx.deviceLinkedOrdersCount,
+          checkoutDuration: normalizedInput.checkoutDuration,
+          checkoutAttempts: normalizedInput.checkoutAttempts,
+          addressChanges: normalizedInput.addressChanges,
+          deviceLinkedAccounts: normalizedInput.deviceLinkedAccounts,
         }
       );
 
@@ -250,6 +252,7 @@ export default function Checkout() {
       ipSubnet: selectedTx.ipSubnet,
       timestamp: Date.now(),
       riskScore: riskResult.score,
+      rtoProbability: riskResult.rtoProbability,
       riskTier: riskResult.tier,
       evaluationId: riskResult.evaluationId,
       outcome: 'PENDING',

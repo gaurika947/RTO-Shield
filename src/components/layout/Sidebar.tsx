@@ -227,6 +227,10 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onClose }: SidebarPro
             </div>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="ML Service Live" />
           </button>
+          <NavLink to="/model-status" className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive ? 'bg-blue-500/15 text-white' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/70'}`}>
+            <Cpu className="w-4 h-4 text-slate-400" />
+            <span className={collapsed ? 'lg:hidden' : ''}>Evaluation</span>
+          </NavLink>
           <button onClick={onToggle} className="hidden lg:flex w-full items-center gap-3 px-3 h-10 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-all" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             <span className={collapsed ? 'hidden' : ''}>Collapse</span>

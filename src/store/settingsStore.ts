@@ -26,6 +26,10 @@ export const DEFAULT_SETTINGS: MerchantSettings = {
   policyCounter: 1,
   aiEnabled: true,
   interventionStrategy: 'balanced',
+  averageForwardShippingCost: 0,
+  averageReverseShippingCost: 0,
+  averageRtoProcessingCost: 0,
+  averageHandlingCost: 0,
 };
 
 interface SettingsActions {
