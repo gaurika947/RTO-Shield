@@ -36,11 +36,21 @@ const allowedOrigins = process.env.CORS_ORIGIN
       'http://127.0.0.1:3001',
     ];
 
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) return true;
+  try {
+    const url = new URL(origin);
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+    if (url.hostname.endsWith('.vercel.app') || url.hostname === 'vercel.app') return true;
+  } catch {}
+  return false;
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
       return callback(new Error('CORS policy: origin not allowed by server configuration'), false);
@@ -230,6 +240,85 @@ function createMutatedPayload(baseRaw, toggleState = {}) {
 }
 
 // ----------------------------------------------------
+// Deterministic Prediction Fallback (Zero-Dependency Engine)
+// ----------------------------------------------------
+export function calculateDeterministicPrediction(payload) {
+  const prevOrders = Number(payload.previous_orders || 0);
+  const prevDel = Number(payload.previous_delivered_orders || 0);
+  const prevRto = Number(payload.previous_rto_orders || 0);
+  const rtoRate = prevOrders > 0 ? prevRto / prevOrders : 0.20;
+  const orderVal = Number(payload.order_value || 1999);
+  const codSelected = String(payload.payment_method || '').toUpperCase() === 'COD' ? 1 : 0;
+  const pincodeRate = Number(payload.pincode_rto_rate || 0.18);
+  const addrComp = Number(payload.address_completeness || 0.8);
+  const addrChanges = Number(payload.address_changes || 0);
+  const cityMatch = Number(payload.city_state_match ?? 1);
+  const chkAttempts = Number(payload.checkout_attempts || 1);
+  const chkDur = Number(payload.checkout_duration || 60);
+  const intentScore = Number(payload.intent_score || 50);
+  const deviceLinks = Number(payload.device_linked_accounts || 1);
+
+  let logit = -2.20;
+  if (codSelected === 1) {
+    logit += 1.35;
+    if (orderVal > 3000) logit += 0.45;
+  } else {
+    logit -= 1.60;
+  }
+
+  if (prevOrders === 0) {
+    logit += 0.20;
+  } else {
+    logit += (rtoRate - 0.20) * 3.5;
+    if (prevDel >= 8) logit -= 0.60;
+  }
+
+  logit += (pincodeRate - 0.15) * 2.8;
+  logit += (1.0 - addrComp) * 0.90;
+  if (addrChanges >= 2) logit += 0.35;
+  if (cityMatch === 0) logit += 0.40;
+
+  logit -= ((intentScore - 50.0) / 50.0) * 0.95;
+  if (chkAttempts >= 3) logit += 0.35;
+  if (chkDur < 25) logit += 0.30;
+
+  if (deviceLinks >= 4) {
+    logit += 1.40;
+  } else if (deviceLinks >= 2) {
+    logit += 0.40;
+  }
+
+  const prob = 1.0 / (1.0 + Math.exp(-logit));
+  const riskScore = Math.max(0, Math.min(100, Math.round(prob * 100)));
+  const riskTier = riskScore > 70 ? 'HIGH' : riskScore > 30 ? 'MEDIUM' : 'LOW';
+
+  return {
+    rtoProbability: Math.round(prob * 10000) / 10000,
+    riskScore,
+    riskLevel: riskTier,
+    riskBand: riskTier,
+    intentScore: Math.round(intentScore * 10) / 10,
+    recommendedAction: riskTier === 'HIGH' ? 'PREPAID_REQUIRED' : riskTier === 'MEDIUM' ? 'SOFT_VERIFICATION' : 'ALLOW_COD',
+    reasons: [
+      codSelected === 1 ? 'Cash on Delivery payment method selected' : 'Digital prepaid payment selected',
+      pincodeRate > 0.25 ? 'Elevated historical return rate in delivery pincode' : 'Standard pincode delivery profile',
+      deviceLinks >= 2 ? `Multi-device cluster detected (${deviceLinks} linked devices)` : 'Single customer device footprint',
+    ],
+    ringRisk: {
+      ringRiskScore: deviceLinks >= 3 ? 75 : deviceLinks >= 2 ? 40 : 10,
+      ringDetected: deviceLinks >= 2,
+      clusterSize: deviceLinks,
+      signals: deviceLinks >= 2 ? [`${deviceLinks} accounts share device footprint`] : ['No abuse cluster anomalies detected'],
+    },
+    modelVersion: 'RTO Shield Deterministic Fallback v1',
+    modelSource: 'deterministic_fallback',
+    featureSchemaVersion: 'rto-features-v1',
+    artifactHash: null,
+    evaluationDataset: 'RTO Shield Synthetic Demo Dataset',
+  };
+}
+
+// ----------------------------------------------------
 // Health Check
 // ----------------------------------------------------
 app.get('/api/health', (_req, res) => {
@@ -268,13 +357,13 @@ app.post('/api/ml/rto-predict', mlLimiter, async (req, res) => {
     const { stdout } = await execFileAsync(
       PYTHON_EXECUTABLE,
       [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)],
-      { timeout: 5000 }
+      { timeout: 10000 }
     );
     const prediction = JSON.parse(stdout);
     return res.json(prediction);
-  } catch (err) {
-    console.error('ML prediction error:', err);
-    return res.status(500).json({ error: 'ML inference failure' });
+  } catch {
+    const payload = buildCanonicalPayload(req.body);
+    return res.json(calculateDeterministicPrediction(payload));
   }
 });
 
@@ -288,13 +377,18 @@ app.post('/api/ml/batch-predict', mlLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Payload must contain items array (1-50 transactions)' });
     }
     const canonicalList = items.map(buildCanonicalPayload);
-    const { stdout } = await execFileAsync(
-      PYTHON_EXECUTABLE,
-      [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(canonicalList)],
-      { timeout: 8000 }
-    );
-    const predictions = JSON.parse(stdout);
-    return res.json({ items: predictions, count: predictions.length });
+    try {
+      const { stdout } = await execFileAsync(
+        PYTHON_EXECUTABLE,
+        [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(canonicalList)],
+        { timeout: 8000 }
+      );
+      const predictions = JSON.parse(stdout);
+      return res.json({ items: predictions, count: predictions.length });
+    } catch {
+      const predictions = canonicalList.map(calculateDeterministicPrediction);
+      return res.json({ items: predictions, count: predictions.length });
+    }
   } catch (err) {
     console.error('Batch ML prediction error:', err);
     return res.status(500).json({ error: 'Batch ML inference failure' });
@@ -315,12 +409,22 @@ app.post('/api/ml/counterfactual', mlLimiter, async (req, res) => {
     const netPayload = createMutatedPayload(req.body, { removeSuspiciousNetwork: true });
 
     const batchList = [basePayload, projPayload, phonePayload, prepaidPayload, addrPayload, netPayload];
-    const { stdout } = await execFileAsync(
-      PYTHON_EXECUTABLE,
-      [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(batchList)],
-      { timeout: 8000 }
-    );
-    const [basePred, projPred, phonePred, prepaidPred, addrPred, netPred] = JSON.parse(stdout);
+    let basePred, projPred, phonePred, prepaidPred, addrPred, netPred;
+    try {
+      const { stdout } = await execFileAsync(
+        PYTHON_EXECUTABLE,
+        [path.join(__dirname, '..', 'ml', 'predict.py'), '--batch', JSON.stringify(batchList)],
+        { timeout: 8000 }
+      );
+      [basePred, projPred, phonePred, prepaidPred, addrPred, netPred] = JSON.parse(stdout);
+    } catch {
+      basePred = calculateDeterministicPrediction(basePayload);
+      projPred = calculateDeterministicPrediction(projPayload);
+      phonePred = calculateDeterministicPrediction(phonePayload);
+      prepaidPred = calculateDeterministicPrediction(prepaidPayload);
+      addrPred = calculateDeterministicPrediction(addrPayload);
+      netPred = calculateDeterministicPrediction(netPayload);
+    }
 
     const detailedDeltas = [
       {
@@ -385,12 +489,16 @@ app.post('/api/ml/counterfactual', mlLimiter, async (req, res) => {
 app.post('/api/risk/predict', mlLimiter, async (req, res) => {
   try {
     const payload = buildCanonicalPayload(req.body);
-    const { stdout } = await execFileAsync(
-      PYTHON_EXECUTABLE,
-      [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)],
-      { timeout: 5000 }
-    );
-    return res.json(JSON.parse(stdout));
+    try {
+      const { stdout } = await execFileAsync(
+        PYTHON_EXECUTABLE,
+        [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(payload)],
+        { timeout: 5000 }
+      );
+      return res.json(JSON.parse(stdout));
+    } catch {
+      return res.json(calculateDeterministicPrediction(payload));
+    }
   } catch (err) {
     console.error('Risk prediction error:', err);
     return res.status(500).json({ error: 'Internal risk prediction failure' });
@@ -547,12 +655,17 @@ app.post('/api/checkout/evaluate', checkoutLimiter, async (req, res) => {
     });
 
     // Run authoritative ML inference
-    const { stdout } = await execFileAsync(
-      PYTHON_EXECUTABLE,
-      [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(canonicalPayload)],
-      { timeout: 5000 }
-    );
-    const mlResult = JSON.parse(stdout);
+    let mlResult;
+    try {
+      const { stdout } = await execFileAsync(
+        PYTHON_EXECUTABLE,
+        [path.join(__dirname, '..', 'ml', 'predict.py'), JSON.stringify(canonicalPayload)],
+        { timeout: 10000 }
+      );
+      mlResult = JSON.parse(stdout);
+    } catch {
+      mlResult = calculateDeterministicPrediction(canonicalPayload);
+    }
 
     const score = Number(mlResult.riskScore ?? 50);
     const rtoProb = Number(mlResult.rtoProbability ?? 0.5);
@@ -729,8 +842,11 @@ app.post('/api/checkout/validate-payment', checkoutLimiter, async (req, res) => 
           codAvailable = authoritativeRiskLevel !== 'HIGH';
           codFee = authoritativeRiskLevel === 'MEDIUM' ? 50 : 0;
         } catch {
-          authoritativeRiskLevel = 'HIGH';
-          codAvailable = false;
+          const ml = calculateDeterministicPrediction(canonical);
+          const s = ml.riskScore ?? 50;
+          authoritativeRiskLevel = s > 70 ? 'HIGH' : s > 30 ? 'MEDIUM' : 'LOW';
+          codAvailable = authoritativeRiskLevel !== 'HIGH';
+          codFee = authoritativeRiskLevel === 'MEDIUM' ? 50 : 0;
         }
       }
     }
@@ -1032,7 +1148,7 @@ const cleanupTimer = setInterval(() => {
 if (cleanupTimer.unref) cleanupTimer.unref();
 
 let _serverInstance = null;
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   _serverInstance = app.listen(PORT, () => {
     console.log(`RTO-Shield API server running on port ${PORT}`);
     console.log(`Gemini API: ${GEMINI_API_KEY ? 'Configured' : 'Not configured (using deterministic fallback)'}`);

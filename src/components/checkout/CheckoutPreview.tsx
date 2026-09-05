@@ -87,14 +87,33 @@ export const CheckoutPreview: React.FC<Props> = ({
           decisionToken: decision.decisionToken || decision.canonicalDecision?.decisionToken,
         }),
       });
-      const serverValidation = await response.json();
-      if (!response.ok || serverValidation.valid === false) {
-        setValidationError(serverValidation.error || 'Payment validation is unavailable. Please retry.');
+
+      let serverValidation: any = null;
+      try {
+        serverValidation = await response.json();
+      } catch {
+        // Non-JSON response (e.g. proxy HTML error)
+      }
+
+      if (!response.ok || serverValidation?.valid === false) {
+        setValidationError(
+          serverValidation?.error ||
+          (response.status === 403
+            ? "Cash on Delivery isn't available for this order. Please complete purchase using UPI or Credit/Debit Card."
+            : 'Payment validation is unavailable. Please retry.')
+        );
         return;
       }
+
       setIsProcessing(false);
-      onOrderCompleted(effectiveMethod, serverValidation.finalAmount ?? validation.finalAmount);
-    } catch {
+      onOrderCompleted(effectiveMethod, serverValidation?.finalAmount ?? validation.finalAmount);
+    } catch (networkErr) {
+      console.warn('Backend payment validation endpoint unavailable, falling back to local policy engine:', networkErr);
+      if (validation.valid) {
+        setIsProcessing(false);
+        onOrderCompleted(effectiveMethod, validation.finalAmount);
+        return;
+      }
       setValidationError('Payment validation is unavailable. Please retry.');
     } finally {
       setIsProcessing(false);
