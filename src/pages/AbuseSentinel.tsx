@@ -127,6 +127,9 @@ export default function AbuseSentinel() {
           <span className="text-xs font-semibold text-blue-600 uppercase tracking-widest block mb-1">
             Abuse Sentinel
           </span>
+          <span className="inline-flex w-fit rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+            Simulation mode
+          </span>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Detect coordinated transaction abuse across connected accounts.
           </h1>

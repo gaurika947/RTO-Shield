@@ -90,6 +90,7 @@ export interface InterventionResult {
   codFee: number;
   upiDiscount: number;
   strategy: InterventionStrategy;
+  impactSource: 'business_simulation';
 }
 
 export interface CounterfactualToggleState {

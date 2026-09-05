@@ -26,11 +26,12 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Health check
 app.get('/api/health', (_req, res) => {
+  const artifactAvailable = fs.existsSync(path.join(__dirname, '..', 'ml', 'models', 'rto_model.joblib'));
   res.json({
     status: 'ok',
     service: 'RTO-Shield API',
-    modelVersion: 'RTO Shield GBDT v1',
-    modelStatus: 'ACTIVE_SINGLETON',
+    modelVersion: artifactAvailable ? 'RTO Shield GBDT v1' : 'RTO Shield Deterministic Fallback v1',
+    modelStatus: artifactAvailable ? 'PRIMARY_ARTIFACT_PER_REQUEST' : 'DETERMINISTIC_FALLBACK',
     geminiStatus: GEMINI_API_KEY ? 'CONFIGURED' : 'NOT_CONFIGURED',
   });
 });
@@ -44,35 +45,6 @@ const PINCODE_RISK_MAP = {
   '380001': 0.14, '411001': 0.11, '141001': 0.26, '160017': 0.12, '834001': 0.33,
 };
 
-function calculateIntentScore(prevDelivered, prevRto, rtoRate, addrComp, duration, attempts, pincodeRisk) {
-  let score = 50.0;
-  if (prevDelivered >= 5 && rtoRate < 0.10) score += 20.0;
-  else if (prevDelivered >= 2 && rtoRate < 0.20) score += 10.0;
-  else if (rtoRate >= 0.50) score -= 22.0;
-  else if (rtoRate >= 0.30) score -= 14.0;
-
-  if (addrComp >= 0.85) score += 8.0;
-  else if (addrComp < 0.50) score -= 12.0;
-
-  if (duration >= 45 && duration <= 240) score += 6.0;
-  else if (duration < 20 || duration > 500) score -= 8.0;
-
-  if (attempts === 1) score += 4.0;
-  else if (attempts >= 3) score -= 10.0;
-
-  if (pincodeRisk > 0.30) score -= 8.0;
-  else if (pincodeRisk < 0.12) score += 5.0;
-
-  return Math.max(5.0, Math.min(95.0, Math.round(score * 10) / 10));
-}
-
-function classifyRiskTier(score) {
-  if (score >= 75) return { riskLevel: 'CRITICAL', action: 'PREPAID_REQUIRED' };
-  if (score >= 50) return { riskLevel: 'HIGH', action: 'VERIFY_OR_PREPAID' };
-  if (score >= 25) return { riskLevel: 'MODERATE', action: 'SOFT_VERIFICATION' };
-  return { riskLevel: 'LOW', action: 'ALLOW_COD' };
-}
-
 // ----------------------------------------------------
 // 1a. CLEAN ML PREDICTION API (POST /api/ml/rto-predict)
 // Returns: predicted RTO probability, model source, model version, latency
@@ -80,6 +52,9 @@ function classifyRiskTier(score) {
 app.post('/api/ml/rto-predict', async (req, res) => {
   try {
     const { customer = {}, order = {}, behavior = {}, address = {} } = req.body;
+    if (!req.body || typeof req.body !== 'object' || !Number.isFinite(Number(order.order_value)) || Number(order.order_value) < 0) {
+      return res.status(400).json({ error: 'Invalid transaction payload: order.order_value must be a non-negative number.' });
+    }
     const addressLine = String(address.line1 || '');
     const derivedAddressCompleteness = Math.min(1, 0.5 + (addressLine.length > 20 ? 0.25 : 0) + (address.landmark ? 0.15 : 0) + (address.pincode && address.city ? 0.1 : 0));
     const payload = {
@@ -487,7 +462,6 @@ app.post('/api/risk/simulate', (req, res) => {
     const currentBaselineRtoRate = 0.142;
     const currentEstimatedRto = Math.round(baseOrderCount * currentBaselineRtoRate);
     const currentConversion = 0.942;
-    const currentGrossRevenue = baseOrderCount * avgOrderValue * currentConversion;
     const currentLoss = (currentEstimatedRto * avgRtoCost) + (currentEstimatedRto * avgOrderValue * 0.08);
 
     const vThresh = Number(inputs.verificationThreshold || 60);
@@ -592,9 +566,7 @@ app.get('/api/abuse-rings', (req, res) => {
   });
 });
 
-// ----------------------------------------------------
-// 3a. CENTRAL PAYMENT POLICY (POST /api/policy/payment-policy)
-// ----------------------------------------------------
+/* Deprecated duplicate policy and payment handlers retained below for history only.
 app.post('/api/policy/payment-policy', (req, res) => {
   const { riskLevel, rtoProbability } = req.body;
   let level = riskLevel;
@@ -677,6 +649,7 @@ app.post('/api/checkout/validate-payment', (req, res) => {
     message: 'Payment attempt verified and validated by backend risk sentinel.',
   });
 });
+*/
 
 // ----------------------------------------------------
 // 4. ML MODEL METRICS (GET /api/ml/metrics)

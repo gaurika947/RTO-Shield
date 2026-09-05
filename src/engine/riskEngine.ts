@@ -104,9 +104,9 @@ export function evaluateRisk(
   const highThresh = settings.highThreshold ?? 70;
   const medThresh = settings.mediumThreshold ?? 30;
 
-  if (finalScore > highThresh) {
+  if (finalScore >= highThresh) {
     tier = 'HIGH';
-  } else if (finalScore > medThresh) {
+  } else if (finalScore >= medThresh) {
     tier = 'MEDIUM';
   } else {
     tier = 'LOW';

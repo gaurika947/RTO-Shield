@@ -166,5 +166,6 @@ export function optimizeIntervention(
     codFee,
     upiDiscount,
     strategy,
+    impactSource: 'business_simulation',
   };
 }

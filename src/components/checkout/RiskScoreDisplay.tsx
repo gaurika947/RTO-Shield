@@ -105,7 +105,7 @@ export function RiskScoreDisplay({ result }: Props) {
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg">
           <Shield className="w-3.5 h-3.5 text-slate-600" />
           <div>
-            <p className="text-[10px] text-slate-500 font-medium">Confidence</p>
+            <p className="text-[10px] text-slate-500 font-medium">Signal completeness</p>
             <p className="text-sm font-bold text-slate-800 tabular-nums">
               {(result.confidence * 100).toFixed(0)}%
             </p>

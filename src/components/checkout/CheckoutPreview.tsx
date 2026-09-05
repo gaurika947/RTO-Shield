@@ -47,7 +47,7 @@ export const CheckoutPreview: React.FC<Props> = ({
       setSelectedMethod('UPI');
     }
     setValidationError(null);
-  }, [policy.codAvailable, policy.riskLevel]);
+  }, [policy.codAvailable, policy.riskLevel, selectedMethod]);
 
   // Dynamic Total Calculation from Central Policy
   const { subtotal, codFee, total: finalTotal } = calculateOrderTotal(
@@ -58,7 +58,7 @@ export const CheckoutPreview: React.FC<Props> = ({
 
   const needsOTP = selectedMethod === 'COD' && decision.otpRequired && !otpVerified;
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     setValidationError(null);
 
     // Enforcement: Validate payment attempt against Central Payment Policy
@@ -69,10 +69,28 @@ export const CheckoutPreview: React.FC<Props> = ({
     }
 
     setIsProcessing(true);
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/checkout/validate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          riskLevel: policy.riskLevel,
+          paymentMethod: selectedMethod,
+          orderAmount,
+        }),
+      });
+      const serverValidation = await response.json();
+      if (!response.ok || serverValidation.valid === false) {
+        setValidationError(serverValidation.error || 'Payment validation is unavailable. Please retry.');
+        return;
+      }
       setIsProcessing(false);
-      onOrderCompleted(selectedMethod, validation.finalAmount);
-    }, 1000);
+      onOrderCompleted(selectedMethod, serverValidation.finalAmount ?? validation.finalAmount);
+    } catch {
+      setValidationError('Payment validation is unavailable. Please retry.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleSimulateOTP = () => {

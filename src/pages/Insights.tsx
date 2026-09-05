@@ -59,8 +59,8 @@ export default function Insights() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             What should I do next?
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Actionable intelligence synthesized by the ML defense coprocessor.
+            <p className="text-sm text-slate-500 mt-0.5">
+            Simulation insights from the current demo workspace.
           </p>
         </div>
       </div>
@@ -95,7 +95,7 @@ export default function Insights() {
               </p>
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 font-medium">Confidence: 94.2%</span>
+                <span className="text-[11px] text-slate-400 font-medium">Simulation fixture · verify against evaluated transactions</span>
                 <button
                   onClick={() => navigate(item.navigateTo)}
                   className="btn-primary py-1.5 px-4 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5 shadow-xs"

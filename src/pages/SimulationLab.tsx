@@ -100,7 +100,7 @@ export default function SimulationLab() {
               </div>
 
               <div className="grid grid-cols-5 gap-4 text-sm mb-3">
-                <div><span className="text-gray-500">Confidence</span><div className="font-bold">{Math.round(r.confidence * 100)}%</div></div>
+                <div><span className="text-gray-500">Signal completeness</span><div className="font-bold">{Math.round(r.confidence * 100)}%</div></div>
                 <div><span className="text-gray-500">Decision</span><div className="font-mono font-bold">{r.decision}</div></div>
                 <div><span className="text-gray-500">Payment</span><div className="font-bold">{r.paymentMethods.join(', ')}</div></div>
                 <div><span className="text-gray-500">Customer</span><div className="font-bold">{r.scenario.customer.name}</div></div>
