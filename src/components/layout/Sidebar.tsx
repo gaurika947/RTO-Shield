@@ -58,7 +58,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onClose }: SidebarPro
         <div className="h-[76px] px-4 flex items-center gap-3 border-b border-white/10 bg-[#0b1b32]/70">
           <BrandMark />
           <div className={`${collapsed ? 'lg:hidden' : ''}`}>
-            <h1 className="text-[11px] font-bold tracking-[0.16em] text-white uppercase">RTO SENSE</h1>
+            <h1 className="text-[11px] font-bold tracking-[0.16em] text-white uppercase">RTO SHIELD</h1>
             <p className="mt-1 max-w-[155px] text-[9px] font-medium leading-tight tracking-[0.08em] text-blue-200/60">SEE THE RISK BEFORE IT RETURNS</p>
           </div>
           <button onClick={onClose} className="ml-auto lg:hidden text-slate-400 hover:text-white" aria-label="Close navigation"><X className="h-5 w-5" /></button>

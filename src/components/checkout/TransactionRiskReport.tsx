@@ -201,13 +201,13 @@ export const TransactionRiskReport: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Metric 2: Overall RTO Sense Risk */}
+        {/* Metric 2: Overall RTO Shield Risk */}
         <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 block">
-                  Overall RTO Sense Risk
+                  Overall RTO Shield Risk
                 </span>
                 <span className="text-xs text-slate-500">
                   Synthesized Multi-Signal Risk Score

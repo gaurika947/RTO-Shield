@@ -58,7 +58,7 @@ export function RiskScoreDisplay({ result }: Props) {
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            RTO Sense Risk Score
+            RTO Shield Risk Score
           </h3>
           <div className="flex items-baseline gap-3">
             <span className={`text-4xl font-bold tabular-nums ${getScoreColor(result.score)}`}>

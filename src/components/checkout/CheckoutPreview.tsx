@@ -388,7 +388,7 @@ export const CheckoutPreview: React.FC<Props> = ({
 
             <div className="text-[10px] text-center text-slate-400 flex items-center justify-center gap-1">
               <Lock className="w-3 h-3 text-emerald-400" />
-              <span>RTO Sense Dynamic Checkout Defense Active</span>
+              <span>RTO Shield Dynamic Checkout Defense Active</span>
             </div>
           </div>
         </div>

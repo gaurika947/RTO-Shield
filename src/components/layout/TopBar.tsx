@@ -12,7 +12,7 @@ export function TopBar({ collapsed, onMenuClick }: { collapsed: boolean; onMenuC
         </button>
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
           <Activity className="w-4 h-4 text-blue-600" />
-          <span>RTO Sense</span>
+          <span>RTO Shield</span>
         </div>
       </div>
 

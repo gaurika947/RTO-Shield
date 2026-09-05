@@ -1,5 +1,5 @@
 {
-  "dataset_name": "RTO Sense Synthetic Demo Dataset",
+  "dataset_name": "RTO Shield Synthetic Demo Dataset",
   "version": "1.0",
   "total_orders": 75000,
   "total_customers": 17706,
