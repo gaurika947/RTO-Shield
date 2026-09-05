@@ -2,6 +2,8 @@
 
 AI-assisted Return-to-Origin (RTO) risk and decision intelligence for e-commerce checkouts.
 
+**Live Deployment**: [https://rto-shield-nu.vercel.app](https://rto-shield-nu.vercel.app)
+
 RTO Shield operates on the closed-loop cycle: **Predict → Understand → Explain → Intervene → Measure**. It functions as an authoritative decision and policy layer between transaction risk and dynamic checkout. It is an advanced hackathon prototype and decision architecture, not a live Razorpay integration.
 
 ---
